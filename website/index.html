@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Synthesis — Federated self-extension for coding agents</title>
+  <meta name="description" content="Synthesis is a skill-first self-extension system for coding agents. Search installed skills, compose bundles, synthesize only as a fallback, and govern the result in public.">
+  <meta property="og:title" content="Synthesis — Federated self-extension for coding agents">
+  <meta property="og:description" content="Search first. Compose second. Synthesize only if forced. A skill-first open-source system for coding agents.">
+  <meta property="og:type" content="website">
+  <meta name="theme-color" content="#c06d2f">
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+
+  <nav class="site-nav" id="site-nav" aria-label="Main navigation">
+    <div class="container-wide nav-inner">
+      <a href="#" class="brand" aria-label="Synthesis home">
+        <span class="brand-mark">S</span>
+        <span class="brand-copy">
+          <span class="brand-name">Synthesis</span>
+          <span class="brand-meta">federated self-extension</span>
+        </span>
+      </a>
+
+      <div class="nav-links" id="nav-links">
+        <a href="#problem">Problem</a>
+        <a href="#loop">Loop</a>
+        <a href="#ecosystem">Ecosystem</a>
+        <a href="#quickstart">Quick Start</a>
+      </div>
+
+      <div class="nav-actions">
+        <button class="theme-toggle" type="button" data-theme-toggle aria-label="Toggle theme">theme</button>
+        <a class="btn btn-ghost" href="https://github.com/synthesis-ai/synthesis" target="_blank" rel="noopener noreferrer">GitHub</a>
+        <button class="mobile-toggle" type="button" aria-label="Toggle navigation" aria-controls="nav-links" aria-expanded="false">menu</button>
+      </div>
+    </div>
+  </nav>
+
+  <main id="main-content">
+    <section class="hero">
+      <div class="container-wide hero-grid">
+        <div class="hero-copy reveal">
+          <div class="eyebrow">Open Source · Skill Packages · GitHub Governance</div>
+          <h1>Give agents a better way to extend themselves.</h1>
+          <p class="hero-lead">
+            Synthesis is a skill-first self-extension system for coding agents.
+          </p>
+          <p class="hero-body">
+            It treats self-extension as a public operating loop: search installed skills, search the canonical repo,
+            compose a bundle, and only then synthesize a new skill package for review. The goal is not more generated code.
+            The goal is a reusable, governed capability ecosystem.
+          </p>
+          <div class="hero-actions">
+            <a class="btn btn-primary" href="#quickstart">Try the package</a>
+            <a class="btn btn-ghost" href="#loop">See the operating loop</a>
+          </div>
+          <div class="hero-stat-strip" role="list" aria-label="Core traits">
+            <div class="hero-stat" role="listitem">
+              <strong>Search-first</strong>
+              <span>reuse beats invention</span>
+            </div>
+            <div class="hero-stat" role="listitem">
+              <strong>Skill packages</strong>
+              <span>portable artifacts, not stray functions</span>
+            </div>
+            <div class="hero-stat" role="listitem">
+              <strong>GitHub review</strong>
+              <span>governance stays in the open</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="hero-panel reveal" aria-hidden="true">
+          <div class="hero-panel-head">
+            <span class="shell-label">Operating law</span>
+            <span class="shell-chip">search -> compose -> synthesize</span>
+          </div>
+
+          <div class="hero-orbit">
+            <div class="orbit-core">
+              <span>S</span>
+              <small>skill-first</small>
+            </div>
+            <div class="orbit-node orbit-node-a">installed</div>
+            <div class="orbit-node orbit-node-b">canonical</div>
+            <div class="orbit-node orbit-node-c">bundle</div>
+            <div class="orbit-node orbit-node-d">draft</div>
+          </div>
+
+          <div class="hero-console">
+            <div class="console-line"><span>01</span><code>search installed skills</code></div>
+            <div class="console-line"><span>02</span><code>search canonical repo</code></div>
+            <div class="console-line"><span>03</span><code>compose a working bundle</code></div>
+            <div class="console-line console-line-accent"><span>04</span><code>synthesize draft skill only if needed</code></div>
+          </div>
+
+          <pre class="hero-code"><code>skill/
+├── SKILL.md
+├── scripts/
+├── assets/
+├── references/
+└── agents/</code></pre>
+        </div>
+      </div>
+    </section>
+
+    <section class="ticker" aria-label="Key phrases">
+      <div class="ticker-track">
+        <span>search first</span>
+        <span>compose second</span>
+        <span>synthesize only if forced</span>
+        <span>curate in public</span>
+        <span>skill packages over code fragments</span>
+        <span>federated capability ecosystem</span>
+      </div>
+    </section>
+
+    <section class="section section-surface" id="problem">
+      <div class="container">
+        <div class="section-label reveal">The Problem</div>
+        <h2 class="reveal">Too many agent systems still treat self-extension as code generation on reflex.</h2>
+        <p class="section-intro reveal">
+          That default duplicates work, hides provenance, and makes governance a cleanup task. Synthesis is built around a narrower, more durable rule:
+          skill discovery and composition come before generation, and new extensions should look like shareable packages that can survive review.
+        </p>
+
+        <div class="problem-grid">
+          <article class="card card-plain reveal">
+            <div class="card-kicker">Common failure mode</div>
+            <h3>Generation becomes the operating system.</h3>
+            <ul class="bullet-list" role="list">
+              <li>Existing tools are skipped because reuse is not enforced.</li>
+              <li>Fresh code spreads faster than review can keep up.</li>
+              <li>Capabilities live in private transcripts instead of public packages.</li>
+              <li>Trust is inferred after adoption instead of attached to provenance.</li>
+            </ul>
+          </article>
+
+          <article class="card card-accent reveal">
+            <div class="card-kicker">Synthesis response</div>
+            <h3>Move extension into a skill economy.</h3>
+            <ul class="bullet-list" role="list">
+              <li>Installed and curated skills are searched before anything else.</li>
+              <li>Composition is a real decision point, not a nice-to-have.</li>
+              <li>Fallback synthesis emits a package, not a random function.</li>
+              <li>Promotion runs through GitHub review and automation.</li>
+            </ul>
+          </article>
+
+          <article class="card reveal">
+            <div class="card-kicker">What the artifact becomes</div>
+            <h3>A package another agent can actually pick up.</h3>
+            <p>
+              `SKILL.md` is the anchor. `scripts/`, `assets/`, `references/`, and `agents/` are optional. The package is portable,
+              inspectable, and curation-friendly from day one.
+            </p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="loop">
+      <div class="container">
+        <div class="section-label reveal">The Loop</div>
+        <h2 class="reveal">One enforced operating loop for self-extension.</h2>
+
+        <div class="loop-grid">
+          <article class="step-card reveal">
+            <div class="step-number">01</div>
+            <h3>Search local</h3>
+            <p>Check installed skills before touching the network or drafting anything new.</p>
+          </article>
+
+          <article class="step-card reveal">
+            <div class="step-number">02</div>
+            <h3>Search canonical</h3>
+            <p>Use the curated GitHub-backed repo as the public source of trusted reusable skills.</p>
+          </article>
+
+          <article class="step-card reveal">
+            <div class="step-number">03</div>
+            <h3>Compose a bundle</h3>
+            <p>If one skill is not enough, assemble a small bundle before reaching for synthesis.</p>
+          </article>
+
+          <article class="step-card reveal">
+            <div class="step-number">04</div>
+            <h3>Draft and submit</h3>
+            <p>Fallback synthesis creates a draft package and a GitHub-ready submission path.</p>
+          </article>
+        </div>
+
+        <div class="architecture-band reveal">
+          <div class="architecture-copy">
+            <div class="card-kicker">Current path</div>
+            <h3>Skill-first in the package, not just in the pitch.</h3>
+            <p>
+              The active code path now centers on `SynthesisClient.acquire_skill(...)`, a runtime for local install and canonical search,
+              plus an MCP surface that exposes skill-management tools rather than treating generated Python as the final artifact.
+            </p>
+          </div>
+          <pre class="architecture-code"><code>result = await client.acquire_skill(
+    "parse csv files",
+    requirements="prefer vetted skills"
+)</code></pre>
+        </div>
+      </div>
+    </section>
+
+    <section class="section section-surface" id="ecosystem">
+      <div class="container">
+        <div class="section-label reveal">Ecosystem</div>
+        <h2 class="reveal">Built to sit between coding agents, local skill roots, and public GitHub review.</h2>
+        <div class="ecosystem-grid">
+          <article class="card reveal">
+            <div class="card-kicker">Host layer</div>
+            <h3>Codex, Claude, MCP-capable agents</h3>
+            <p>Install skills into the host’s native skill root and expose management through MCP where that helps.</p>
+          </article>
+          <article class="card reveal">
+            <div class="card-kicker">Artifact layer</div>
+            <h3>Portable skill packages</h3>
+            <p>Keep the extension unit concrete and inspectable, with optional scripts and references only when they are justified.</p>
+          </article>
+          <article class="card reveal">
+            <div class="card-kicker">Governance layer</div>
+            <h3>Canonical GitHub curation</h3>
+            <p>Move trust, promotion, and provenance into pull requests, checks, and visible repository history.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="governance">
+      <div class="container">
+        <div class="section-label reveal">Governance</div>
+        <h2 class="reveal">Open review is part of the product surface.</h2>
+        <div class="governance-band reveal">
+          <div class="governance-track">
+            <div class="governance-stage">
+              <span>UNTRUSTED</span>
+              <small>local draft</small>
+            </div>
+            <div class="governance-arrow">-></div>
+            <div class="governance-stage">
+              <span>PROBATION</span>
+              <small>prepared or submitted</small>
+            </div>
+            <div class="governance-arrow">-></div>
+            <div class="governance-stage">
+              <span>TRUSTED</span>
+              <small>merged curated skill</small>
+            </div>
+            <div class="governance-arrow">-></div>
+            <div class="governance-stage">
+              <span>VERIFIED</span>
+              <small>system or elevated</small>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section section-surface" id="quickstart">
+      <div class="container">
+        <div class="section-label reveal">Quick Start</div>
+        <h2 class="reveal">Run the package locally. Deploy the site as static files. Keep the stack light.</h2>
+        <div class="quickstart-grid">
+          <article class="code-card reveal">
+            <div class="code-title">Package setup</div>
+            <pre><code>pip install -e ".[dev]"
+pytest -q
+synthesis acquire-skill "parse csv files"</code></pre>
+          </article>
+
+          <article class="code-card reveal">
+            <div class="code-title">Static site workflow</div>
+            <pre><code>cd website
+python -m http.server 8000
+# or publish to GitHub Pages / Cloudflare</code></pre>
+          </article>
+        </div>
+        <div class="cta-row reveal">
+          <a class="btn btn-primary" href="https://github.com/synthesis-ai/synthesis" target="_blank" rel="noopener noreferrer">Open the repo</a>
+          <a class="btn btn-ghost" href="https://github.com/synthesis-ai/synthesis#readme" target="_blank" rel="noopener noreferrer">Read the README</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container-wide footer-inner">
+      <div>
+        <div class="footer-mark">Synthesis</div>
+        <p>Search first. Compose second. Synthesize only if forced.</p>
+      </div>
+      <div class="footer-links">
+        <a href="https://github.com/synthesis-ai/synthesis" target="_blank" rel="noopener noreferrer">GitHub</a>
+        <a href="#quickstart">Quick Start</a>
+        <a href="#governance">Governance</a>
+      </div>
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
