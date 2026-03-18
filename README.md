@@ -60,7 +60,6 @@ synthesis/
 ├── synthesis/          # Python package
 ├── tests/              # Test suite
 ├── exchange_server/    # Legacy marketplace prototype
-├── private/            # Historical drafts and archived design material
 └── website/            # Static project website
 ```
 
