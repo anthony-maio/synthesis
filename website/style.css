@@ -325,13 +325,14 @@ code {
 .problem-grid,
 .loop-grid,
 .ecosystem-grid,
+.stss-grid,
 .quickstart-grid {
   display: grid;
   gap: var(--space-5);
 }
 
 .hero-stat-strip {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   margin-top: var(--space-8);
 }
 
@@ -530,6 +531,11 @@ code {
   margin-top: var(--space-8);
 }
 
+.stss-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: var(--space-8);
+}
+
 .card,
 .step-card,
 .code-card {
@@ -575,6 +581,10 @@ code {
 .governance-band {
   margin-top: var(--space-8);
   padding: var(--space-6);
+}
+
+.governance-note {
+  margin-top: var(--space-6);
 }
 
 .governance-track {
@@ -685,6 +695,7 @@ code {
   .problem-grid,
   .loop-grid,
   .ecosystem-grid,
+  .stss-grid,
   .quickstart-grid,
   .hero-stat-strip,
   .footer-inner {

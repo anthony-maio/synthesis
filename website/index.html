@@ -32,6 +32,7 @@
         <a href="#problem">Problem</a>
         <a href="#loop">Loop</a>
         <a href="#ecosystem">Ecosystem</a>
+        <a href="#security">Security</a>
         <a href="#quickstart">Quick Start</a>
       </div>
 
@@ -73,6 +74,10 @@
             <div class="hero-stat" role="listitem">
               <strong>GitHub review</strong>
               <span>governance stays in the open</span>
+            </div>
+            <div class="hero-stat" role="listitem">
+              <strong>STSS gate</strong>
+              <span>scan every changed skill in registry CI</span>
             </div>
           </div>
         </div>
@@ -232,7 +237,7 @@
           <article class="card reveal">
             <div class="card-kicker">Governance layer</div>
             <h3>Canonical GitHub curation</h3>
-            <p>Move trust, promotion, and provenance into pull requests, checks, and visible repository history.</p>
+            <p>Move trust, promotion, provenance, and security checks into pull requests, CI, and visible repository history.</p>
           </article>
         </div>
       </div>
@@ -265,19 +270,86 @@
             </div>
           </div>
         </div>
+        <p class="section-intro reveal governance-note">
+          A skill can be scanned, attested, reviewed, and still remain separate from original authorship. Synthesis keeps those claims split on purpose.
+        </p>
+      </div>
+    </section>
+
+    <section class="section section-surface" id="security">
+      <div class="container">
+        <div class="section-label reveal">Security</div>
+        <h2 class="reveal">We use Ken Huang's STSS as a registry gate, not as a trust shortcut.</h2>
+        <p class="section-intro reveal">
+          The canonical registry now runs STSS in CI when skills are added or changed. That gives Synthesis a concrete security pass for the package snapshot under review without confusing scan status with authorship or curation.
+        </p>
+
+        <div class="stss-grid">
+          <article class="card card-accent reveal">
+            <div class="card-kicker">What STSS does here</div>
+            <h3>Scan first. Verify attestations when present.</h3>
+            <ul class="bullet-list" role="list">
+              <li>Every changed skill package gets an STSS scan in registry CI.</li>
+              <li>If `attestation.json` exists, the registry also verifies it.</li>
+              <li>The generated catalog records STSS status and signing metadata.</li>
+              <li>Clients can use that data later without taking on a hard dependency.</li>
+            </ul>
+          </article>
+
+          <article class="card reveal">
+            <div class="card-kicker">What STSS does not do</div>
+            <h3>It does not replace provenance or review.</h3>
+            <ul class="bullet-list" role="list">
+              <li>`PROVENANCE.json` still records authorship, source, and license.</li>
+              <li>`attestation.json` only speaks for the exact registry snapshot.</li>
+              <li>Mirrored skills can be attested without implying upstream endorsement.</li>
+              <li>Human curation still decides whether a generated or donated skill belongs.</li>
+            </ul>
+          </article>
+        </div>
+
+        <div class="architecture-band reveal">
+          <div class="architecture-copy">
+            <div class="card-kicker">Registry policy</div>
+            <h3>Quality gate, then public curation.</h3>
+            <p>
+              Today the gate is layered: package validation, generated-catalog freshness, tests, STSS scan, optional attestation verification, provenance review, and human judgment. That is deliberate. A signed skill is not automatically a trusted skill.
+            </p>
+          </div>
+          <pre class="architecture-code"><code>PR adds skill
+  -> validate package
+  -> run tests
+  -> stss scan
+  -> verify attestation (if present)
+  -> review provenance
+  -> decide whether to merge</code></pre>
+        </div>
+
+        <div class="cta-row reveal">
+          <a class="btn btn-primary" href="https://github.com/anthony-maio/synthesis-skills" target="_blank" rel="noopener noreferrer">Open the registry</a>
+          <a class="btn btn-ghost" href="https://github.com/kenhuangus/stss" target="_blank" rel="noopener noreferrer">View STSS</a>
+        </div>
       </div>
     </section>
 
     <section class="section section-surface" id="quickstart">
       <div class="container">
         <div class="section-label reveal">Quick Start</div>
-        <h2 class="reveal">Run the package locally. Deploy the site as static files. Keep the stack light.</h2>
+        <h2 class="reveal">Run the package locally. Gate the registry in CI. Keep the stack light.</h2>
         <div class="quickstart-grid">
           <article class="code-card reveal">
             <div class="code-title">Package setup</div>
             <pre><code>pip install -e ".[dev]"
 pytest -q
 synthesis acquire-skill "parse csv files"</code></pre>
+          </article>
+
+          <article class="code-card reveal">
+            <div class="code-title">Registry security gate</div>
+            <pre><code>npm install -g stss@0.4.3
+python scripts/run_stss_gate.py \
+  --base origin/main \
+  --head HEAD</code></pre>
           </article>
 
           <article class="code-card reveal">
@@ -305,6 +377,7 @@ python -m http.server 8000
         <a href="https://github.com/synthesis-ai/synthesis" target="_blank" rel="noopener noreferrer">GitHub</a>
         <a href="#quickstart">Quick Start</a>
         <a href="#governance">Governance</a>
+        <a href="#security">Security</a>
       </div>
     </div>
   </footer>
