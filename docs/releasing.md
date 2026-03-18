@@ -46,7 +46,7 @@ python scripts/sync_website.py --source website --dest ../synthesis-web
 ```
 
 After sync:
-- commit and push `D:\Development\synthesis-web`
+- commit and push the dedicated `synthesis-web` repo
 - verify GitHub Pages deployment
 - verify the custom domain and TLS edge configuration
 
