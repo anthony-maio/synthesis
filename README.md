@@ -2,6 +2,14 @@
 
 Synthesis is a skill-first self-extension system for coding agents.
 
+[![Status](https://img.shields.io/badge/status-alpha-b86b2b)](https://github.com/anthony-maio/synthesis)
+[![Python](https://img.shields.io/badge/python-3.10%2B-3776AB?logo=python&logoColor=white)](https://github.com/anthony-maio/synthesis/blob/main/pyproject.toml)
+[![License](https://img.shields.io/badge/license-MIT-1f6feb)](https://github.com/anthony-maio/synthesis/blob/main/LICENSE)
+[![Website](https://img.shields.io/badge/website-live-0a7f5a)](https://synthesis.making-minds.ai)
+[![Registry](https://img.shields.io/badge/registry-synthesis--skills-6f42c1)](https://github.com/anthony-maio/synthesis-skills)
+
+Search first. Compose second. Synthesize last.
+
 Instead of defaulting to generated code for every new task, Synthesis pushes a stricter loop:
 
 1. Search existing skills.
@@ -13,6 +21,14 @@ The current codebase is an alpha Python package centered on a `SynthesisClient` 
 
 Website: [synthesis.making-minds.ai](https://synthesis.making-minds.ai)  
 Canonical registry: [anthony-maio/synthesis-skills](https://github.com/anthony-maio/synthesis-skills)
+
+## At a Glance
+
+- Skill-first acquisition flow for coding agents
+- Canonical GitHub skill registry with curated provenance
+- Composition before synthesis
+- Draft skills stay local and untrusted until review
+- Static website source lives in `website/` and is synced to `synthesis-web`
 
 ## Status
 
@@ -90,6 +106,13 @@ asyncio.run(main())
 ```
 
 By default, Synthesis targets the canonical public registry at `anthony-maio/synthesis-skills` and bootstraps a local checkout under `~/.synthesis/canonical/synthesis-skills` when `git` is available. Use `SYNTHESIS_CANONICAL_REPO_PATH` or `--canonical-repo` to override that checkout path.
+
+## CLI
+
+```bash
+synthesis acquire-skill "parse csv files"
+synthesis list-installed-skills
+```
 
 ## Development
 
