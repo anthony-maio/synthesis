@@ -15,6 +15,7 @@ from synthesis.core.models import (
     SkillCompositionBundle,
     SkillDraft,
     SkillInstallState,
+    SkillLifecycleStage,
     SkillRecord,
     SkillSourceType,
     SkillSubmission,
@@ -30,6 +31,8 @@ from synthesis.skill_runtime import (
     SkillSynthesizer,
     compose_skills,
     default_canonical_repo_path,
+    render_provenance_metadata,
+    render_registry_metadata,
     score_skill,
     tokenize,
 )
@@ -231,6 +234,9 @@ class SynthesisClient:
             source_type=SkillSourceType.SYNTHESIZED,
             repo=self._canonical_repo_name(),
             install_state=SkillInstallState.DRAFT,
+            lifecycle_stage=SkillLifecycleStage.DRAFT,
+            capability_family=draft.capability_family or draft.name,
+            is_primary=False,
         )
 
         result.success = True
@@ -310,27 +316,107 @@ class SynthesisClient:
                 except UnicodeDecodeError:
                     binary_files[relative_path] = base64.b64encode(payload).decode("ascii")
 
+        capability_family = installed.capability_family or installed.name
+        if installed.lifecycle_stage == SkillLifecycleStage.CANONICAL:
+            submission_type = "canonical_improvement_candidate"
+            nearest_canonical = installed.name
+            evidence_summary = (
+                installed.evidence_summary
+                or f"Prepared a challenger update for the canonical skill {installed.name}."
+            )
+        else:
+            submission_type = installed.submission_type or "new_family_candidate"
+            nearest_canonical = installed.nearest_canonical
+            evidence_summary = (
+                installed.evidence_summary
+                or f"Prepared from the local draft skill {installed.name} for curator review."
+            )
+
+        files.setdefault(
+            "REGISTRY.json",
+            render_registry_metadata(
+                capability_family=capability_family,
+                lifecycle_stage=SkillLifecycleStage.CHALLENGER,
+                trust_level=TrustLevel.PROBATION,
+                is_primary=False,
+                variant_of=installed.variant_of,
+                supersedes=installed.supersedes,
+                submission_type=submission_type,
+                nearest_canonical=nearest_canonical,
+                evidence_summary=evidence_summary,
+            ),
+        )
+        files.setdefault(
+            "PROVENANCE.json",
+            render_provenance_metadata(
+                name=installed.name,
+                source_type=installed.source.type,
+                upstream=installed.source.upstream,
+            ),
+        )
+
         if binary_files:
-            return SkillSubmission(
+            submission = SkillSubmission(
                 repo=self._canonical_repo_name(),
                 branch=f"synthesis/{name}",
                 title=f"Add skill: {name}",
                 status="prepared",
                 target_path=f"skills/{name}",
+                trust_level=TrustLevel.PROBATION,
+                lifecycle_stage=SkillLifecycleStage.CHALLENGER,
+                capability_family=capability_family,
+                submission_type=submission_type,
+                nearest_canonical=nearest_canonical,
+                evidence_summary=evidence_summary,
                 files={f"skills/{name}/{path}": content for path, content in files.items()},
                 binary_files={
                     f"skills/{name}/{path}": content for path, content in binary_files.items()
                 },
             )
+            self.local_repository.update_metadata(
+                name,
+                trust_level=TrustLevel.PROBATION,
+                install_state=SkillInstallState.SUBMITTED,
+                lifecycle_stage=SkillLifecycleStage.CHALLENGER,
+                capability_family=capability_family,
+                is_primary=False,
+                variant_of=installed.variant_of,
+                supersedes=installed.supersedes,
+                submission_type=submission_type,
+                nearest_canonical=nearest_canonical,
+                evidence_summary=evidence_summary,
+            )
+            return submission
 
         draft = SkillDraft(
             name=name,
             description=installed.description,
             keywords=installed.keywords,
+            capability_family=capability_family,
             files=files,
             evaluation_scenarios=[],
         )
-        return self.canonical_repository.prepare_submission(draft)
+        submission = self.canonical_repository.prepare_submission(draft).model_copy(
+            update={
+                "submission_type": submission_type,
+                "nearest_canonical": nearest_canonical,
+                "evidence_summary": evidence_summary,
+            }
+        )
+        self.local_repository.update_metadata(
+            name,
+            trust_level=TrustLevel.PROBATION,
+            install_state=SkillInstallState.SUBMITTED,
+            lifecycle_stage=SkillLifecycleStage.CHALLENGER,
+            capability_family=capability_family,
+            is_primary=False,
+            variant_of=installed.variant_of,
+            supersedes=installed.supersedes,
+            submission_type=submission_type,
+            nearest_canonical=nearest_canonical,
+            evidence_summary=evidence_summary,
+        )
+        return submission
 
     def get_metrics(self) -> Dict[str, Any]:
         """Return summary metrics and current skill inventory."""
@@ -385,6 +471,15 @@ class SynthesisClient:
             source_type=skill.source.type,
             repo=skill.source.repo,
             upstream=skill.source.upstream,
+            install_state=SkillInstallState.INSTALLED,
+            lifecycle_stage=skill.lifecycle_stage,
+            capability_family=skill.capability_family,
+            is_primary=skill.is_primary,
+            variant_of=skill.variant_of,
+            supersedes=skill.supersedes,
+            submission_type=skill.submission_type,
+            nearest_canonical=skill.nearest_canonical,
+            evidence_summary=skill.evidence_summary,
         )
 
     def _canonical_repo_name(self) -> str:

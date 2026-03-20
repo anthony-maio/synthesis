@@ -14,6 +14,7 @@ from synthesis.core.models import (
     SkillCompositionBundle,
     SkillDraft,
     SkillInstallState,
+    SkillLifecycleStage,
     SkillRecord,
     SkillSource,
     SkillSourceType,
@@ -156,6 +157,59 @@ def render_skill_markdown(name: str, description: str, keywords: List[str], inte
     return "\n".join(header)
 
 
+def render_registry_metadata(
+    *,
+    capability_family: str,
+    lifecycle_stage: SkillLifecycleStage,
+    trust_level: TrustLevel,
+    is_primary: bool,
+    variant_of: Optional[str] = None,
+    supersedes: Optional[List[str]] = None,
+    submission_type: Optional[str] = None,
+    nearest_canonical: Optional[str] = None,
+    evidence_summary: Optional[str] = None,
+) -> str:
+    """Render canonical registry governance metadata as JSON."""
+    payload = {
+        "capability_family": capability_family,
+        "lifecycle_stage": lifecycle_stage.value,
+        "trust_level": trust_level.value,
+        "is_primary": is_primary,
+        "variant_of": variant_of,
+        "supersedes": supersedes or [],
+        "submission_type": submission_type,
+        "nearest_canonical": nearest_canonical,
+        "evidence_summary": evidence_summary,
+    }
+    return json.dumps(payload, indent=2) + "\n"
+
+
+def render_provenance_metadata(
+    *,
+    name: str,
+    source_type: SkillSourceType,
+    upstream: Optional[str] = None,
+) -> str:
+    """Render provenance metadata for synthesized or curated skill submissions."""
+    if source_type == SkillSourceType.CANONICAL and upstream:
+        payload = {
+            "kind": "mirrored_external",
+            "author": "Synthesis",
+            "source": upstream,
+            "upstream": upstream,
+            "source_license": "unknown",
+            "notes": f"Submitted from a canonical skill snapshot for {name}.",
+        }
+    else:
+        payload = {
+            "kind": "first_party",
+            "author": "Synthesis",
+            "source": f"synthesis://local-draft/{name}",
+            "notes": "Synthesized locally from a live task and prepared for registry review.",
+        }
+    return json.dumps(payload, indent=2) + "\n"
+
+
 def build_skill_record(
     *,
     name: str,
@@ -168,6 +222,14 @@ def build_skill_record(
     install_root: Optional[str] = None,
     upstream: Optional[str] = None,
     install_state: SkillInstallState = SkillInstallState.DISCOVERED,
+    lifecycle_stage: SkillLifecycleStage = SkillLifecycleStage.DRAFT,
+    capability_family: Optional[str] = None,
+    is_primary: bool = False,
+    variant_of: Optional[str] = None,
+    supersedes: Optional[List[str]] = None,
+    submission_type: Optional[str] = None,
+    nearest_canonical: Optional[str] = None,
+    evidence_summary: Optional[str] = None,
     score: float = 0.0,
 ) -> SkillRecord:
     """Construct a skill record with normalized values."""
@@ -185,6 +247,14 @@ def build_skill_record(
             upstream=upstream,
         ),
         install_state=install_state,
+        lifecycle_stage=lifecycle_stage,
+        capability_family=capability_family or name,
+        is_primary=is_primary,
+        variant_of=variant_of,
+        supersedes=supersedes or [],
+        submission_type=submission_type,
+        nearest_canonical=nearest_canonical,
+        evidence_summary=evidence_summary,
         relative_path=relative_path,
         install_path=str(Path(install_root) / name) if install_root else None,
         score=score,
@@ -240,6 +310,25 @@ class LocalSkillRepository:
                     install_state=SkillInstallState(
                         install_metadata.get("install_state", SkillInstallState.DRAFT.value)
                     ),
+                    lifecycle_stage=SkillLifecycleStage(
+                        install_metadata.get(
+                            "lifecycle_stage", SkillLifecycleStage.DRAFT.value
+                        )
+                    ),
+                    capability_family=_coerce_optional(
+                        install_metadata.get("capability_family")
+                    )
+                    or skill_dir.name,
+                    is_primary=bool(install_metadata.get("is_primary", False)),
+                    variant_of=_coerce_optional(install_metadata.get("variant_of")),
+                    supersedes=_coerce_keywords(install_metadata.get("supersedes")),
+                    submission_type=_coerce_optional(install_metadata.get("submission_type")),
+                    nearest_canonical=_coerce_optional(
+                        install_metadata.get("nearest_canonical")
+                    ),
+                    evidence_summary=_coerce_optional(
+                        install_metadata.get("evidence_summary")
+                    ),
                 )
             )
         return skills
@@ -261,6 +350,14 @@ class LocalSkillRepository:
         repo: Optional[str],
         upstream: Optional[str] = None,
         install_state: SkillInstallState = SkillInstallState.INSTALLED,
+        lifecycle_stage: SkillLifecycleStage = SkillLifecycleStage.DRAFT,
+        capability_family: Optional[str] = None,
+        is_primary: bool = False,
+        variant_of: Optional[str] = None,
+        supersedes: Optional[List[str]] = None,
+        submission_type: Optional[str] = None,
+        nearest_canonical: Optional[str] = None,
+        evidence_summary: Optional[str] = None,
     ) -> SkillRecord:
         """Install a synthesized or copied skill into the host root."""
         target_dir = self.root / name
@@ -282,6 +379,14 @@ class LocalSkillRepository:
                     "repo": repo,
                     "upstream": upstream,
                     "install_state": install_state.value,
+                    "lifecycle_stage": lifecycle_stage.value,
+                    "capability_family": capability_family or name,
+                    "is_primary": is_primary,
+                    "variant_of": variant_of,
+                    "supersedes": supersedes or [],
+                    "submission_type": submission_type,
+                    "nearest_canonical": nearest_canonical,
+                    "evidence_summary": evidence_summary,
                 },
                 indent=2,
             ),
@@ -300,7 +405,62 @@ class LocalSkillRepository:
             install_root=str(self.root),
             upstream=upstream,
             install_state=install_state,
+            lifecycle_stage=lifecycle_stage,
+            capability_family=capability_family or name,
+            is_primary=is_primary,
+            variant_of=variant_of,
+            supersedes=supersedes,
+            submission_type=submission_type,
+            nearest_canonical=nearest_canonical,
+            evidence_summary=evidence_summary,
         )
+
+    def update_metadata(
+        self,
+        name: str,
+        *,
+        trust_level: Optional[TrustLevel] = None,
+        install_state: Optional[SkillInstallState] = None,
+        lifecycle_stage: Optional[SkillLifecycleStage] = None,
+        capability_family: Optional[str] = None,
+        is_primary: Optional[bool] = None,
+        variant_of: Optional[str] = None,
+        supersedes: Optional[List[str]] = None,
+        submission_type: Optional[str] = None,
+        nearest_canonical: Optional[str] = None,
+        evidence_summary: Optional[str] = None,
+    ) -> Optional[SkillRecord]:
+        """Update the local sidecar metadata for one installed skill."""
+        skill_dir = self.root / name
+        skill_file = skill_dir / "SKILL.md"
+        metadata_path = skill_dir / ".synthesis.json"
+        if not skill_file.exists():
+            return None
+
+        existing = self._read_install_metadata(skill_dir)
+        if trust_level is not None:
+            existing["trust_level"] = trust_level.value
+        if install_state is not None:
+            existing["install_state"] = install_state.value
+        if lifecycle_stage is not None:
+            existing["lifecycle_stage"] = lifecycle_stage.value
+        if capability_family is not None:
+            existing["capability_family"] = capability_family
+        if is_primary is not None:
+            existing["is_primary"] = is_primary
+        if variant_of is not None:
+            existing["variant_of"] = variant_of
+        if supersedes is not None:
+            existing["supersedes"] = supersedes
+        if submission_type is not None:
+            existing["submission_type"] = submission_type
+        if nearest_canonical is not None:
+            existing["nearest_canonical"] = nearest_canonical
+        if evidence_summary is not None:
+            existing["evidence_summary"] = evidence_summary
+
+        metadata_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
+        return self.get(name)
 
     def _read_install_metadata(self, skill_dir: Path) -> Dict[str, object]:
         """Read the local Synthesis metadata sidecar if it exists."""
@@ -385,6 +545,9 @@ class CanonicalSkillRepository:
                     source_type=SkillSourceType.CANONICAL,
                     repo=self.repo_slug,
                     relative_path=str(Path("skills") / skill_dir.name),
+                    lifecycle_stage=SkillLifecycleStage.CANONICAL,
+                    capability_family=skill_dir.name,
+                    is_primary=True,
                 )
             )
         return skills
@@ -414,13 +577,42 @@ class CanonicalSkillRepository:
 
     def prepare_submission(self, draft: SkillDraft) -> SkillSubmission:
         """Create a PR-ready submission object for a draft skill."""
+        capability_family = draft.capability_family or draft.name
+        evidence_summary = (
+            draft.evaluation_scenarios[0] if draft.evaluation_scenarios else None
+        )
+        files = {
+            f"skills/{draft.name}/{path}": content
+            for path, content in draft.files.items()
+        }
+        files.setdefault(
+            f"skills/{draft.name}/REGISTRY.json",
+            render_registry_metadata(
+                capability_family=capability_family,
+                lifecycle_stage=SkillLifecycleStage.CHALLENGER,
+                trust_level=TrustLevel.PROBATION,
+                is_primary=False,
+                submission_type="new_family_candidate",
+                nearest_canonical=None,
+                evidence_summary=evidence_summary,
+            ),
+        )
+        files.setdefault(
+            f"skills/{draft.name}/PROVENANCE.json",
+            render_provenance_metadata(name=draft.name, source_type=SkillSourceType.SYNTHESIZED),
+        )
         return SkillSubmission(
             repo=self.repo_slug,
             branch=f"synthesis/{draft.name}",
             title=f"Add skill: {draft.name}",
             status="prepared",
             target_path=f"skills/{draft.name}",
-            files={f"skills/{draft.name}/{path}": content for path, content in draft.files.items()},
+            trust_level=TrustLevel.PROBATION,
+            lifecycle_stage=SkillLifecycleStage.CHALLENGER,
+            capability_family=capability_family,
+            submission_type="new_family_candidate",
+            evidence_summary=evidence_summary,
+            files=files,
             binary_files={},
         )
 
@@ -429,6 +621,7 @@ class CanonicalSkillRepository:
         relative_path = str(entry.get("relative_path", ""))
         trust_level = TrustLevel(str(entry.get("trust_level", TrustLevel.TRUSTED.value)))
         source_type = SkillSourceType(str(entry.get("source_type", SkillSourceType.CANONICAL.value)))
+        governance = entry.get("governance", {}) if isinstance(entry.get("governance"), dict) else {}
         return build_skill_record(
             name=str(entry["name"]),
             description=str(entry.get("description", "")),
@@ -438,6 +631,17 @@ class CanonicalSkillRepository:
             repo=str(entry.get("repo", self.repo_slug)),
             relative_path=relative_path,
             upstream=_coerce_optional(entry.get("upstream")),
+            lifecycle_stage=SkillLifecycleStage(
+                str(governance.get("lifecycle_stage", SkillLifecycleStage.CANONICAL.value))
+            ),
+            capability_family=_coerce_optional(governance.get("capability_family"))
+            or str(entry["name"]),
+            is_primary=bool(governance.get("is_primary", source_type == SkillSourceType.CANONICAL)),
+            variant_of=_coerce_optional(governance.get("variant_of")),
+            supersedes=_coerce_keywords(governance.get("supersedes")),
+            submission_type=_coerce_optional(governance.get("submission_type")),
+            nearest_canonical=_coerce_optional(governance.get("nearest_canonical")),
+            evidence_summary=_coerce_optional(governance.get("evidence_summary")),
         )
 
 
@@ -466,6 +670,14 @@ class CodexHostAdapter:
         repo: Optional[str],
         upstream: Optional[str] = None,
         install_state: SkillInstallState = SkillInstallState.INSTALLED,
+        lifecycle_stage: SkillLifecycleStage = SkillLifecycleStage.DRAFT,
+        capability_family: Optional[str] = None,
+        is_primary: bool = False,
+        variant_of: Optional[str] = None,
+        supersedes: Optional[List[str]] = None,
+        submission_type: Optional[str] = None,
+        nearest_canonical: Optional[str] = None,
+        evidence_summary: Optional[str] = None,
     ) -> SkillRecord:
         """Install files into the host root."""
         return self.repository.install_files(
@@ -476,6 +688,14 @@ class CodexHostAdapter:
             repo=repo,
             upstream=upstream,
             install_state=install_state,
+            lifecycle_stage=lifecycle_stage,
+            capability_family=capability_family,
+            is_primary=is_primary,
+            variant_of=variant_of,
+            supersedes=supersedes,
+            submission_type=submission_type,
+            nearest_canonical=nearest_canonical,
+            evidence_summary=evidence_summary,
         )
 
     def activation_message(self) -> str:
@@ -493,7 +713,7 @@ class SkillSynthesizer:
         """Generate a deterministic draft skill package."""
         keywords = _keywords_from_intent(intent)
         name = slugify(intent)
-        description = f"Handle the task: {intent.strip().rstrip('.')}."
+        description = f"Use when the user asks to {intent.strip().lower().rstrip('.')}."
         if requirements:
             description = f"{description} Requirements: {requirements.strip()}."
 
@@ -507,6 +727,7 @@ class SkillSynthesizer:
             name=name,
             description=description,
             keywords=keywords,
+            capability_family=name,
             files={"SKILL.md": skill_markdown},
             evaluation_scenarios=scenarios,
         )

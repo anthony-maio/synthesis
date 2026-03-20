@@ -28,6 +28,7 @@ Canonical registry: [anthony-maio/synthesis-skills](https://github.com/anthony-m
 - Canonical GitHub skill registry with curated provenance
 - Composition before synthesis
 - Draft skills stay local and untrusted until review
+- Lifecycle-aware flow for draft, challenger, and canonical skills
 - Static website source lives in `website/` and is synced to `synthesis-web`
 
 ## Status

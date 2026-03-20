@@ -43,6 +43,7 @@ def test_synthesis_public_imports_are_available() -> None:
     assert hasattr(synthesis, "SynthesisClient")
     assert hasattr(synthesis, "SynthesisMCPServer")
     assert hasattr(synthesis, "SkillAcquisitionResult")
+    assert hasattr(synthesis, "SkillLifecycleStage")
 
 
 def test_project_urls_point_to_public_release_surfaces() -> None:

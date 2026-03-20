@@ -9,6 +9,7 @@ import pytest
 from synthesis import (
     ResolutionMethod,
     SkillInstallState,
+    SkillLifecycleStage,
     SynthesisClient,
     SynthesisMCPServer,
     TrustLevel,
@@ -94,6 +95,17 @@ async def test_acquire_skill_installs_canonical_match(skill_roots: tuple[Path, P
                 "trust_level": "trusted",
                 "source_type": "canonical",
                 "repo": "github.com/synthesis-ai/skills",
+                "governance": {
+                    "capability_family": "csv-parser",
+                    "lifecycle_stage": "canonical",
+                    "trust_level": "trusted",
+                    "is_primary": True,
+                    "variant_of": None,
+                    "supersedes": [],
+                    "submission_type": None,
+                    "nearest_canonical": None,
+                    "evidence_summary": None,
+                },
             }
         ],
     )
@@ -111,6 +123,8 @@ async def test_acquire_skill_installs_canonical_match(skill_roots: tuple[Path, P
     assert result.primary_skill is not None
     assert result.primary_skill.name == "csv-parser"
     assert result.primary_skill.trust_level == TrustLevel.TRUSTED
+    assert result.primary_skill.lifecycle_stage == SkillLifecycleStage.CANONICAL
+    assert result.primary_skill.capability_family == "csv-parser"
     assert (install_root / "csv-parser" / "SKILL.md").exists()
 
 
@@ -231,9 +245,14 @@ async def test_acquire_skill_synthesizes_draft_and_prepares_submission(
     assert result.method == ResolutionMethod.SYNTHESIZED
     assert result.primary_skill is not None
     assert result.primary_skill.trust_level == TrustLevel.UNTRUSTED
+    assert result.primary_skill.lifecycle_stage == SkillLifecycleStage.DRAFT
     assert result.submission is not None
     assert result.submission.repo == DEFAULT_CANONICAL_REPO_SLUG
     assert result.submission.status == "prepared"
+    assert result.submission.lifecycle_stage == SkillLifecycleStage.CHALLENGER
+    assert result.submission.capability_family == result.primary_skill.name
+    assert f"skills/{result.primary_skill.name}/REGISTRY.json" in result.submission.files
+    assert f"skills/{result.primary_skill.name}/PROVENANCE.json" in result.submission.files
     assert (install_root / result.primary_skill.name / "SKILL.md").exists()
 
 
@@ -349,6 +368,7 @@ def test_local_skill_without_metadata_defaults_to_untrusted_draft(tmp_path: Path
     assert installed[0].name == "ad-hoc-skill"
     assert installed[0].trust_level == TrustLevel.UNTRUSTED
     assert installed[0].install_state == SkillInstallState.DRAFT
+    assert installed[0].lifecycle_stage == SkillLifecycleStage.DRAFT
 
 
 @pytest.mark.asyncio
@@ -435,3 +455,34 @@ def test_client_construction_is_lazy_for_provider_and_canonical_bootstrap(
     assert client.list_installed_skills() == []
     assert provider_created is False
     assert checkout_attempted is False
+
+
+@pytest.mark.asyncio
+async def test_submit_skill_marks_local_draft_as_submitted_challenger(
+    skill_roots: tuple[Path, Path],
+) -> None:
+    canonical_root, install_root = skill_roots
+    _write_catalog(canonical_root, [])
+
+    client = SynthesisClient(
+        provider_type="mock",
+        canonical_repo_path=str(canonical_root),
+        host_root=str(install_root),
+    )
+
+    result = await client.acquire_skill("triage support tickets", requirements="Use skill packages")
+
+    assert result.primary_skill is not None
+    submission = client.submit_skill(result.primary_skill.name)
+
+    assert submission is not None
+    assert submission.lifecycle_stage == SkillLifecycleStage.CHALLENGER
+    assert submission.capability_family == result.primary_skill.name
+    assert submission.trust_level == TrustLevel.PROBATION
+
+    installed = client.inspect_skill(result.primary_skill.name)
+
+    assert installed is not None
+    assert installed.install_state == SkillInstallState.SUBMITTED
+    assert installed.trust_level == TrustLevel.PROBATION
+    assert installed.lifecycle_stage == SkillLifecycleStage.CHALLENGER

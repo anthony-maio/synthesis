@@ -76,6 +76,15 @@ class SkillInstallState(str, Enum):
     SUBMITTED = "submitted"
 
 
+class SkillLifecycleStage(str, Enum):
+    """Lifecycle stage of a skill package in the curation flow."""
+
+    DRAFT = "draft"
+    CHALLENGER = "challenger"
+    CANONICAL = "canonical"
+    DEPRECATED = "deprecated"
+
+
 class SkillSource(BaseModel):
     """Where a skill package came from."""
 
@@ -96,6 +105,14 @@ class SkillRecord(BaseModel):
     trust_level: TrustLevel = Field(default=TrustLevel.UNTRUSTED)
     source: SkillSource
     install_state: SkillInstallState = Field(default=SkillInstallState.DISCOVERED)
+    lifecycle_stage: SkillLifecycleStage = Field(default=SkillLifecycleStage.DRAFT)
+    capability_family: Optional[str] = None
+    is_primary: bool = False
+    variant_of: Optional[str] = None
+    supersedes: List[str] = Field(default_factory=list)
+    submission_type: Optional[str] = None
+    nearest_canonical: Optional[str] = None
+    evidence_summary: Optional[str] = None
     relative_path: Optional[str] = None
     install_path: Optional[str] = None
     score: float = 0.0
@@ -118,6 +135,12 @@ class SkillSubmission(BaseModel):
     title: str
     status: str
     target_path: str
+    trust_level: TrustLevel = Field(default=TrustLevel.PROBATION)
+    lifecycle_stage: SkillLifecycleStage = Field(default=SkillLifecycleStage.CHALLENGER)
+    capability_family: Optional[str] = None
+    submission_type: str = "new_family_candidate"
+    nearest_canonical: Optional[str] = None
+    evidence_summary: Optional[str] = None
     files: Dict[str, str] = Field(default_factory=dict)
     binary_files: Dict[str, str] = Field(default_factory=dict)
 
@@ -128,6 +151,7 @@ class SkillDraft(BaseModel):
     name: str
     description: str
     keywords: List[str] = Field(default_factory=list)
+    capability_family: Optional[str] = None
     files: Dict[str, str] = Field(default_factory=dict)
     evaluation_scenarios: List[str] = Field(default_factory=list)
 
