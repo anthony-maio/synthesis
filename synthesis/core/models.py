@@ -211,6 +211,16 @@ class SkillSubmission(BaseModel):
     binary_files: Dict[str, str] = Field(default_factory=dict)
 
 
+class CandidateBundleSubmissionEnvelope(BaseModel):
+    """PR-ready candidate handoff bundle for registry submission."""
+
+    bundle_path: str
+    submission: SkillSubmission
+    validation: CandidateBundleValidation
+    review: CandidateBundleReview
+    pull_request_body: str
+
+
 class SkillDraft(BaseModel):
     """Draft skill package produced by synthesis."""
 

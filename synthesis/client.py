@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional
 from synthesis.core.models import (
     CandidateBundleInspection,
     CandidateBundleReview,
+    CandidateBundleSubmissionEnvelope,
     CandidateBundleValidation,
     CapabilityCategory,
     SkillCompositionBundle,
@@ -51,6 +52,48 @@ ALLOWED_VARIANT_REASONS = {
     "security_model",
     "distinct_workflow",
 }
+
+
+def _render_candidate_pull_request_body(review: CandidateBundleReview) -> str:
+    """Render a deterministic PR body for one candidate bundle submission."""
+    sections = [
+        "## Candidate",
+        "",
+        f"- Skill: `{review.skill_name}`",
+        f"- Headline: {review.headline}",
+        f"- Submission type: `{review.submission_type or 'unknown'}`",
+        f"- Capability family: `{review.capability_family or 'unknown'}`",
+    ]
+    if review.nearest_canonical:
+        sections.append(f"- Nearest canonical: `{review.nearest_canonical}`")
+    if review.variant_reason:
+        sections.append(f"- Variant reason: `{review.variant_reason}`")
+    sections.extend(
+        [
+            "",
+            "## Review Readiness",
+            "",
+            f"- Ready for review: `{str(review.ready_for_review).lower()}`",
+            f"- License status: `{review.license_status or 'unknown'}`",
+            f"- Packaging allowed: `{str(review.packaging_allowed).lower() if review.packaging_allowed is not None else 'unknown'}`",
+            "",
+            "## Why This Exists",
+            "",
+            review.evidence_summary or "No evidence summary provided.",
+            "",
+            "## Miner Report Excerpt",
+            "",
+            review.miner_report_excerpt or "No miner report excerpt available.",
+        ]
+    )
+    if review.validation_errors:
+        sections.extend(["", "## Validation Errors", ""])
+        sections.extend(f"- {error}" for error in review.validation_errors)
+    if review.validation_warnings:
+        sections.extend(["", "## Validation Warnings", ""])
+        sections.extend(f"- {warning}" for warning in review.validation_warnings)
+    sections.append("")
+    return "\n".join(sections)
 
 
 class ResolutionMethod(Enum):
@@ -386,6 +429,26 @@ class SynthesisClient:
             validation_warnings=detail.validation.warnings,
             evidence_summary=skill.evidence_summary,
             miner_report_excerpt=report_excerpt,
+        )
+
+    def prepare_candidate_bundle_submission(
+        self,
+        bundle_path: str,
+    ) -> Optional[CandidateBundleSubmissionEnvelope]:
+        """Return a PR-ready submission envelope for a valid candidate bundle."""
+        validation = self.validate_candidate_bundle(bundle_path)
+        if not validation.valid:
+            return None
+        review = self.inspect_candidate_bundle_review(bundle_path)
+        submission = self.submit_candidate_bundle(bundle_path)
+        if not review or not submission:
+            return None
+        return CandidateBundleSubmissionEnvelope(
+            bundle_path=str(bundle_path),
+            submission=submission,
+            validation=validation,
+            review=review,
+            pull_request_body=_render_candidate_pull_request_body(review),
         )
 
     def validate_candidate_bundle(self, bundle_path: str) -> CandidateBundleValidation:

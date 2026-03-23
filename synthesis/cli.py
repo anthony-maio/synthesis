@@ -52,6 +52,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     inspect_bundle_review.add_argument("path")
 
+    prepare_bundle_submission = subparsers.add_parser(
+        "prepare-candidate-bundle-submission",
+        help="Return a PR-ready submission envelope for a miner-produced challenger bundle.",
+    )
+    prepare_bundle_submission.add_argument("path")
+
     validate_bundle = subparsers.add_parser(
         "validate-candidate-bundle",
         help="Validate a miner-produced challenger bundle by path.",
@@ -122,6 +128,14 @@ async def run_command(args: argparse.Namespace) -> Any:
             review.model_dump()
             if review
             else {"success": False, "error": "candidate bundle not found or invalid"}
+        )
+
+    if args.command == "prepare-candidate-bundle-submission":
+        envelope = client.prepare_candidate_bundle_submission(args.path)
+        return (
+            envelope.model_dump()
+            if envelope
+            else {"success": False, "error": "candidate bundle cannot be prepared"}
         )
 
     if args.command == "validate-candidate-bundle":

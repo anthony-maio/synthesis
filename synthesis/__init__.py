@@ -31,6 +31,7 @@ from synthesis.client import (
 from synthesis.core.models import (
     CandidateBundleInspection,
     CandidateBundleReview,
+    CandidateBundleSubmissionEnvelope,
     CandidateBundleValidation,
     Capability,
     CapabilityCategory,
@@ -62,6 +63,7 @@ __all__ = [
     "CapabilityCategory",
     "CandidateBundleInspection",
     "CandidateBundleReview",
+    "CandidateBundleSubmissionEnvelope",
     "CandidateBundleValidation",
     "TrustLevel",
     "RiskLevel",

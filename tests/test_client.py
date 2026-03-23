@@ -425,6 +425,7 @@ async def test_mcp_server_exposes_skill_management_tools(
         "inspect_candidate_bundle_review",
         "install_candidate_bundle",
         "list_installed_skills",
+        "prepare_candidate_bundle_submission",
         "validate_candidate_bundle",
         "submit_candidate_bundle",
         "submit_skill",
@@ -461,6 +462,16 @@ async def test_mcp_server_exposes_skill_management_tools(
     assert review_payload["ready_for_review"] is True
     assert review_payload["submission_type"] == "variant_candidate"
     assert review_payload["headline"] == "Variant candidate for repo-surveyor"
+
+    envelope_response = await server.call_tool(
+        "prepare_candidate_bundle_submission",
+        {"path": str(inspect_bundle)},
+    )
+    envelope_payload = json.loads(envelope_response)
+
+    assert envelope_payload["submission"]["target_path"] == "skills/review-bundle"
+    assert envelope_payload["review"]["headline"] == "Variant candidate for repo-surveyor"
+    assert "## Why This Exists" in envelope_payload["pull_request_body"]
 
 
 def test_inspect_candidate_bundle_returns_structured_metadata(skill_roots: tuple[Path, Path]) -> None:
@@ -628,6 +639,60 @@ def test_submit_candidate_bundle_prepares_submission_with_metadata(
     assert submission.binary_files["skills/hidden-repo-surveyor/assets/example.bin"] == base64.b64encode(
         b"\x00candidate-binary"
     ).decode("ascii")
+
+
+def test_prepare_candidate_bundle_submission_returns_pr_ready_envelope(
+    skill_roots: tuple[Path, Path],
+) -> None:
+    canonical_root, install_root = skill_roots
+    _write_catalog(canonical_root, [])
+    bundle_dir = _write_candidate_bundle(
+        canonical_root / "candidate-bundles",
+        name="hidden-repo-surveyor",
+        description="Use when inspecting hidden directories and orchestration files in a repository.",
+    )
+
+    client = SynthesisClient(
+        provider_type="mock",
+        canonical_repo_path=str(canonical_root),
+        host_root=str(install_root),
+    )
+
+    envelope = client.prepare_candidate_bundle_submission(str(bundle_dir))
+
+    assert envelope is not None
+    assert envelope.submission.target_path == "skills/hidden-repo-surveyor"
+    assert envelope.validation.valid is True
+    assert envelope.review.ready_for_review is True
+    assert envelope.bundle_path == str(bundle_dir)
+    assert "## Candidate" in envelope.pull_request_body
+    assert "## Why This Exists" in envelope.pull_request_body
+    assert "distinct_workflow" in envelope.pull_request_body
+    assert "repo-surveyor" in envelope.pull_request_body
+
+
+def test_prepare_candidate_bundle_submission_blocks_invalid_bundle(
+    skill_roots: tuple[Path, Path],
+) -> None:
+    canonical_root, install_root = skill_roots
+    _write_catalog(canonical_root, [])
+    bundle_dir = _write_candidate_bundle(
+        canonical_root / "candidate-bundles",
+        name="blocked-bundle",
+        description="Use when the candidate should be blocked for review.",
+    )
+    registry_path = bundle_dir / "REGISTRY.json"
+    payload = json.loads(registry_path.read_text(encoding="utf-8"))
+    payload["nearest_canonical"] = None
+    registry_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+    client = SynthesisClient(
+        provider_type="mock",
+        canonical_repo_path=str(canonical_root),
+        host_root=str(install_root),
+    )
+
+    assert client.prepare_candidate_bundle_submission(str(bundle_dir)) is None
 
 
 def test_validate_candidate_bundle_rejects_missing_variant_context(
