@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional
 
 from synthesis.core.models import (
     CandidateBundleInspection,
+    CandidateBundleReview,
     CandidateBundleValidation,
     CapabilityCategory,
     SkillCompositionBundle,
@@ -341,6 +342,50 @@ class SynthesisClient:
             miner_report=text_files.get("MINER_REPORT.md"),
             text_files=sorted(text_files.keys()),
             binary_files=sorted(binary_files.keys()),
+        )
+
+    def inspect_candidate_bundle_review(
+        self,
+        bundle_path: str,
+    ) -> Optional[CandidateBundleReview]:
+        """Return a compact curator-facing summary for a candidate bundle."""
+        detail = self.inspect_candidate_bundle_detail(bundle_path)
+        if not detail:
+            return None
+
+        skill = detail.skill
+        report_excerpt = None
+        if detail.miner_report:
+            lines = [line.strip() for line in detail.miner_report.splitlines() if line.strip()]
+            report_excerpt = " ".join(lines[1:3]) if len(lines) > 1 else lines[0]
+
+        ready_for_review = detail.validation.valid and skill.packaging_allowed is True
+        if ready_for_review:
+            if skill.submission_type == "variant_candidate" and skill.capability_family:
+                headline = f"Variant candidate for {skill.capability_family}"
+            elif skill.submission_type == "canonical_improvement_candidate" and skill.nearest_canonical:
+                headline = f"Improvement candidate for {skill.nearest_canonical}"
+            elif skill.submission_type == "new_family_candidate" and skill.capability_family:
+                headline = f"New family candidate for {skill.capability_family}"
+            else:
+                headline = f"Candidate ready for review: {skill.name}"
+        else:
+            headline = f"Blocked: {skill.name} is not ready for review"
+
+        return CandidateBundleReview(
+            skill_name=skill.name,
+            headline=headline,
+            ready_for_review=ready_for_review,
+            submission_type=skill.submission_type,
+            capability_family=skill.capability_family,
+            nearest_canonical=skill.nearest_canonical,
+            variant_reason=skill.variant_reason,
+            license_status=skill.license_status,
+            packaging_allowed=skill.packaging_allowed,
+            validation_errors=detail.validation.errors,
+            validation_warnings=detail.validation.warnings,
+            evidence_summary=skill.evidence_summary,
+            miner_report_excerpt=report_excerpt,
         )
 
     def validate_candidate_bundle(self, bundle_path: str) -> CandidateBundleValidation:

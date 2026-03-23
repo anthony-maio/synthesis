@@ -167,6 +167,24 @@ class CandidateBundleInspection(BaseModel):
     binary_files: List[str] = Field(default_factory=list)
 
 
+class CandidateBundleReview(BaseModel):
+    """High-signal curator summary for a candidate bundle."""
+
+    skill_name: str
+    headline: str
+    ready_for_review: bool
+    submission_type: Optional[str] = None
+    capability_family: Optional[str] = None
+    nearest_canonical: Optional[str] = None
+    variant_reason: Optional[str] = None
+    license_status: Optional[str] = None
+    packaging_allowed: Optional[bool] = None
+    validation_errors: List[str] = Field(default_factory=list)
+    validation_warnings: List[str] = Field(default_factory=list)
+    evidence_summary: Optional[str] = None
+    miner_report_excerpt: Optional[str] = None
+
+
 class SkillSubmission(BaseModel):
     """PR-ready submission metadata for a synthesized or curated skill."""
 

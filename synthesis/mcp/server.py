@@ -64,6 +64,15 @@ class SynthesisMCPServer:
                 },
             },
             {
+                "name": "inspect_candidate_bundle_review",
+                "description": "Return a compact curator-facing summary for a challenger bundle.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {"path": {"type": "string"}},
+                    "required": ["path"],
+                },
+            },
+            {
                 "name": "validate_candidate_bundle",
                 "description": "Validate a miner-produced challenger bundle by path.",
                 "inputSchema": {
@@ -143,6 +152,15 @@ class SynthesisMCPServer:
                     {"success": False, "error": f"Candidate bundle '{bundle_path}' not found"}
                 )
             return json.dumps(detail.model_dump(), indent=2, default=str)
+
+        if name == "inspect_candidate_bundle_review":
+            bundle_path = str(arguments.get("path", ""))
+            review = self.client.inspect_candidate_bundle_review(bundle_path)
+            if not review:
+                return json.dumps(
+                    {"success": False, "error": f"Candidate bundle '{bundle_path}' not found"}
+                )
+            return json.dumps(review.model_dump(), indent=2, default=str)
 
         if name == "validate_candidate_bundle":
             bundle_path = str(arguments.get("path", ""))

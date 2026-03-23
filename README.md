@@ -116,6 +116,7 @@ synthesis acquire-skill "parse csv files"
 synthesis list-installed-skills
 synthesis inspect-candidate-bundle ./candidate-bundle
 synthesis inspect-candidate-bundle-detail ./candidate-bundle
+synthesis inspect-candidate-bundle-review ./candidate-bundle
 synthesis validate-candidate-bundle ./candidate-bundle
 synthesis submit-candidate-bundle ./candidate-bundle
 synthesis install-candidate-bundle ./candidate-bundle --allow-challengers

@@ -422,6 +422,7 @@ async def test_mcp_server_exposes_skill_management_tools(
         "inspect_skill",
         "inspect_candidate_bundle",
         "inspect_candidate_bundle_detail",
+        "inspect_candidate_bundle_review",
         "install_candidate_bundle",
         "list_installed_skills",
         "validate_candidate_bundle",
@@ -449,6 +450,17 @@ async def test_mcp_server_exposes_skill_management_tools(
     assert detail_payload["skill"]["name"] == "review-bundle"
     assert detail_payload["validation"]["valid"] is True
     assert "Nearest canonical: repo-surveyor" in detail_payload["miner_report"]
+
+    review_response = await server.call_tool(
+        "inspect_candidate_bundle_review",
+        {"path": str(inspect_bundle)},
+    )
+    review_payload = json.loads(review_response)
+
+    assert review_payload["skill_name"] == "review-bundle"
+    assert review_payload["ready_for_review"] is True
+    assert review_payload["submission_type"] == "variant_candidate"
+    assert review_payload["headline"] == "Variant candidate for repo-surveyor"
 
 
 def test_inspect_candidate_bundle_returns_structured_metadata(skill_roots: tuple[Path, Path]) -> None:
@@ -516,6 +528,65 @@ def test_inspect_candidate_bundle_detail_includes_validation_and_report(
     assert detail.governance["submission_type"] == "variant_candidate"
     assert detail.binary_files == ["assets/example.bin"]
     assert "MINER_REPORT.md" in detail.text_files
+
+
+def test_inspect_candidate_bundle_review_summarizes_curator_decision_surface(
+    skill_roots: tuple[Path, Path],
+) -> None:
+    canonical_root, install_root = skill_roots
+    _write_catalog(canonical_root, [])
+    bundle_dir = _write_candidate_bundle(
+        canonical_root / "candidate-bundles",
+        name="hidden-repo-surveyor",
+        description="Use when inspecting hidden directories and orchestration files in a repository.",
+    )
+
+    client = SynthesisClient(
+        provider_type="mock",
+        canonical_repo_path=str(canonical_root),
+        host_root=str(install_root),
+    )
+
+    review = client.inspect_candidate_bundle_review(str(bundle_dir))
+
+    assert review is not None
+    assert review.skill_name == "hidden-repo-surveyor"
+    assert review.ready_for_review is True
+    assert review.headline == "Variant candidate for repo-surveyor"
+    assert review.validation_errors == []
+    assert review.license_status == "permissive"
+    assert review.nearest_canonical == "repo-surveyor"
+    assert review.variant_reason == "distinct_workflow"
+    assert "stronger hidden-directory inventory" in review.miner_report_excerpt
+
+
+def test_inspect_candidate_bundle_review_surfaces_blockers(
+    skill_roots: tuple[Path, Path],
+) -> None:
+    canonical_root, install_root = skill_roots
+    _write_catalog(canonical_root, [])
+    bundle_dir = _write_candidate_bundle(
+        canonical_root / "candidate-bundles",
+        name="blocked-bundle",
+        description="Use when the candidate should be blocked for review.",
+    )
+    registry_path = bundle_dir / "REGISTRY.json"
+    payload = json.loads(registry_path.read_text(encoding="utf-8"))
+    payload["nearest_canonical"] = None
+    registry_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+    client = SynthesisClient(
+        provider_type="mock",
+        canonical_repo_path=str(canonical_root),
+        host_root=str(install_root),
+    )
+
+    review = client.inspect_candidate_bundle_review(str(bundle_dir))
+
+    assert review is not None
+    assert review.ready_for_review is False
+    assert any("nearest_canonical" in error for error in review.validation_errors)
+    assert "Blocked" in review.headline
 
 
 def test_submit_candidate_bundle_prepares_submission_with_metadata(
