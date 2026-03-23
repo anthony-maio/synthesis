@@ -65,6 +65,11 @@ def build_parser() -> argparse.ArgumentParser:
     publish_bundle_submission.add_argument("path")
     publish_bundle_submission.add_argument("--open-pull-request", action="store_true")
     publish_bundle_submission.add_argument("--base-branch", default="main")
+    publish_bundle_submission.add_argument("--draft-pull-request", action="store_true")
+    publish_bundle_submission.add_argument("--label", action="append", default=[])
+    publish_bundle_submission.add_argument("--reviewer", action="append", default=[])
+    publish_bundle_submission.add_argument("--use-temp-worktree", action="store_true")
+    publish_bundle_submission.add_argument("--worktree-root")
 
     validate_bundle = subparsers.add_parser(
         "validate-candidate-bundle",
@@ -151,6 +156,11 @@ async def run_command(args: argparse.Namespace) -> Any:
             args.path,
             open_pull_request=args.open_pull_request,
             base_branch=args.base_branch,
+            draft_pull_request=args.draft_pull_request,
+            labels=args.label,
+            reviewers=args.reviewer,
+            use_temp_worktree=args.use_temp_worktree,
+            worktree_root=args.worktree_root,
         )
         return (
             result.model_dump()

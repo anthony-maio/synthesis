@@ -226,6 +226,8 @@ class SubmissionAutomationResult(BaseModel):
 
     success: bool
     branch: str
+    target_repo_root: str
+    used_temp_worktree: bool = False
     commit_sha: Optional[str] = None
     pull_request_url: Optional[str] = None
     envelope: CandidateBundleSubmissionEnvelope

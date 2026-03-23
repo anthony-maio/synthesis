@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import shutil
 import subprocess
+import tempfile
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -460,6 +461,11 @@ class SynthesisClient:
         *,
         open_pull_request: bool = False,
         base_branch: str = "main",
+        draft_pull_request: bool = False,
+        labels: Optional[List[str]] = None,
+        reviewers: Optional[List[str]] = None,
+        use_temp_worktree: bool = False,
+        worktree_root: Optional[str] = None,
     ) -> Optional[SubmissionAutomationResult]:
         """Publish a prepared candidate envelope into the canonical registry checkout."""
         if not self.canonical_repository:
@@ -477,50 +483,84 @@ class SynthesisClient:
         if not git_executable:
             return None
 
-        self._run_command([git_executable, "checkout", "-B", envelope.submission.branch], cwd=repo_root)
-
-        target_dir = repo_root / envelope.submission.target_path
-        if target_dir.exists():
-            shutil.rmtree(target_dir)
-        target_dir.mkdir(parents=True, exist_ok=True)
-
-        for relative_path, content in envelope.submission.files.items():
-            destination = repo_root / relative_path
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            destination.write_text(content, encoding="utf-8")
-        for relative_path, payload in envelope.submission.binary_files.items():
-            destination = repo_root / relative_path
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            destination.write_bytes(base64.b64decode(payload.encode("ascii")))
-
         warnings: List[str] = []
-        self._run_command([git_executable, "checkout", "-B", envelope.submission.branch], cwd=repo_root)
-        self._run_command([git_executable, "add", envelope.submission.target_path], cwd=repo_root)
-        self._run_command(
-            [
-                git_executable,
-                "commit",
-                "-m",
-                envelope.submission.title,
-                "-m",
-                envelope.pull_request_body,
-            ],
-            cwd=repo_root,
-        )
-        commit_sha = self._run_command([git_executable, "rev-parse", "HEAD"], cwd=repo_root).strip()
-        self._run_command(
-            [git_executable, "push", "-u", "origin", envelope.submission.branch],
-            cwd=repo_root,
-        )
+        target_repo_root = repo_root
+        temp_worktree_root: Optional[Path] = None
 
-        pull_request_url: Optional[str] = None
-        if open_pull_request:
-            gh_executable = shutil.which("gh")
-            if not gh_executable:
-                warnings.append("GitHub CLI not available; skipped pull request creation.")
-            else:
-                pull_request_url = self._run_command(
-                    [
+        if use_temp_worktree:
+            worktree_parent = Path(worktree_root) if worktree_root else None
+            if worktree_parent:
+                worktree_parent.mkdir(parents=True, exist_ok=True)
+            temp_worktree_root = Path(
+                tempfile.mkdtemp(
+                    prefix="synthesis-publish-",
+                    dir=str(worktree_parent) if worktree_parent else None,
+                )
+            )
+            self._run_command(
+                [git_executable, "worktree", "add", str(temp_worktree_root), base_branch],
+                cwd=repo_root,
+            )
+            target_repo_root = temp_worktree_root
+        else:
+            status = self._run_command(
+                [git_executable, "status", "--porcelain"],
+                cwd=repo_root,
+            )
+            if status.strip():
+                return None
+
+        try:
+            self._run_command(
+                [git_executable, "checkout", "-B", envelope.submission.branch],
+                cwd=target_repo_root,
+            )
+
+            target_dir = target_repo_root / envelope.submission.target_path
+            if target_dir.exists():
+                shutil.rmtree(target_dir)
+            target_dir.mkdir(parents=True, exist_ok=True)
+
+            for relative_path, content in envelope.submission.files.items():
+                destination = target_repo_root / relative_path
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                destination.write_text(content, encoding="utf-8")
+            for relative_path, payload in envelope.submission.binary_files.items():
+                destination = target_repo_root / relative_path
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                destination.write_bytes(base64.b64decode(payload.encode("ascii")))
+
+            self._run_command(
+                [git_executable, "add", envelope.submission.target_path],
+                cwd=target_repo_root,
+            )
+            self._run_command(
+                [
+                    git_executable,
+                    "commit",
+                    "-m",
+                    envelope.submission.title,
+                    "-m",
+                    envelope.pull_request_body,
+                ],
+                cwd=target_repo_root,
+            )
+            commit_sha = self._run_command(
+                [git_executable, "rev-parse", "HEAD"],
+                cwd=target_repo_root,
+            ).strip()
+            self._run_command(
+                [git_executable, "push", "-u", "origin", envelope.submission.branch],
+                cwd=target_repo_root,
+            )
+
+            pull_request_url: Optional[str] = None
+            if open_pull_request:
+                gh_executable = shutil.which("gh")
+                if not gh_executable:
+                    warnings.append("GitHub CLI not available; skipped pull request creation.")
+                else:
+                    pr_command = [
                         gh_executable,
                         "pr",
                         "create",
@@ -532,18 +572,39 @@ class SynthesisClient:
                         envelope.submission.title,
                         "--body",
                         envelope.pull_request_body,
-                    ],
-                    cwd=repo_root,
-                ).strip() or None
+                    ]
+                    if draft_pull_request:
+                        pr_command.append("--draft")
+                    for label in labels or []:
+                        pr_command.extend(["--label", label])
+                    for reviewer in reviewers or []:
+                        pr_command.extend(["--reviewer", reviewer])
+                    pull_request_url = self._run_command(
+                        pr_command,
+                        cwd=target_repo_root,
+                    ).strip() or None
 
-        return SubmissionAutomationResult(
-            success=True,
-            branch=envelope.submission.branch,
-            commit_sha=commit_sha or None,
-            pull_request_url=pull_request_url,
-            envelope=envelope,
-            warnings=warnings,
-        )
+            return SubmissionAutomationResult(
+                success=True,
+                branch=envelope.submission.branch,
+                target_repo_root=str(target_repo_root),
+                used_temp_worktree=use_temp_worktree,
+                commit_sha=commit_sha or None,
+                pull_request_url=pull_request_url,
+                envelope=envelope,
+                warnings=warnings,
+            )
+        finally:
+            if temp_worktree_root is not None:
+                try:
+                    self._run_command(
+                        [git_executable, "worktree", "remove", "--force", str(temp_worktree_root)],
+                        cwd=repo_root,
+                    )
+                except subprocess.CalledProcessError:
+                    warnings.append(
+                        f"Failed to remove temporary worktree at {temp_worktree_root}."
+                    )
 
     def validate_candidate_bundle(self, bundle_path: str) -> CandidateBundleValidation:
         """Validate a miner-produced challenger bundle before install or submission."""

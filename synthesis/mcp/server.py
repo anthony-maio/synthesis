@@ -90,6 +90,11 @@ class SynthesisMCPServer:
                         "path": {"type": "string"},
                         "open_pull_request": {"type": "boolean"},
                         "base_branch": {"type": "string"},
+                        "draft_pull_request": {"type": "boolean"},
+                        "labels": {"type": "array", "items": {"type": "string"}},
+                        "reviewers": {"type": "array", "items": {"type": "string"}},
+                        "use_temp_worktree": {"type": "boolean"},
+                        "worktree_root": {"type": "string"},
                     },
                     "required": ["path"],
                 },
@@ -202,6 +207,15 @@ class SynthesisMCPServer:
                 bundle_path,
                 open_pull_request=bool(arguments.get("open_pull_request", False)),
                 base_branch=str(arguments.get("base_branch", "main")),
+                draft_pull_request=bool(arguments.get("draft_pull_request", False)),
+                labels=[str(label) for label in arguments.get("labels", [])],
+                reviewers=[str(reviewer) for reviewer in arguments.get("reviewers", [])],
+                use_temp_worktree=bool(arguments.get("use_temp_worktree", False)),
+                worktree_root=(
+                    str(arguments["worktree_root"])
+                    if arguments.get("worktree_root") is not None
+                    else None
+                ),
             )
             if not result:
                 return json.dumps(
