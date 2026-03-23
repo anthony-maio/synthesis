@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from synthesis.core.models import (
+    CandidateBundleInspection,
     CandidateBundleValidation,
     CapabilityCategory,
     SkillCompositionBundle,
@@ -38,6 +39,9 @@ from synthesis.skill_runtime import (
     render_registry_metadata,
     score_skill,
     tokenize,
+)
+from synthesis.skill_runtime import (
+    inspect_candidate_bundle as inspect_candidate_bundle_payload,
 )
 
 ALLOWED_VARIANT_REASONS = {
@@ -313,6 +317,31 @@ class SynthesisClient:
         except FileNotFoundError:
             return None
         return record
+
+    def inspect_candidate_bundle_detail(
+        self,
+        bundle_path: str,
+    ) -> Optional[CandidateBundleInspection]:
+        """Return a reviewer-facing inspection payload for a candidate bundle."""
+        validation = self.validate_candidate_bundle(bundle_path)
+        if validation.skill is None:
+            return None
+        try:
+            record, governance, provenance, text_files, binary_files = inspect_candidate_bundle_payload(
+                bundle_path,
+                repo=self._canonical_repo_name(),
+            )
+        except FileNotFoundError:
+            return None
+        return CandidateBundleInspection(
+            skill=record,
+            validation=validation,
+            governance=governance,
+            provenance=provenance,
+            miner_report=text_files.get("MINER_REPORT.md"),
+            text_files=sorted(text_files.keys()),
+            binary_files=sorted(binary_files.keys()),
+        )
 
     def validate_candidate_bundle(self, bundle_path: str) -> CandidateBundleValidation:
         """Validate a miner-produced challenger bundle before install or submission."""

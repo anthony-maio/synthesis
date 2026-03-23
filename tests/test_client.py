@@ -421,6 +421,7 @@ async def test_mcp_server_exposes_skill_management_tools(
         "acquire_skill",
         "inspect_skill",
         "inspect_candidate_bundle",
+        "inspect_candidate_bundle_detail",
         "install_candidate_bundle",
         "list_installed_skills",
         "validate_candidate_bundle",
@@ -433,6 +434,21 @@ async def test_mcp_server_exposes_skill_management_tools(
 
     assert payload["success"] is True
     assert payload["primary_skill"]["name"] == "release-notes"
+
+    inspect_bundle = _write_candidate_bundle(
+        canonical_root / "candidate-bundles",
+        name="review-bundle",
+        description="Use when reviewing miner-produced challenger bundles.",
+    )
+    detail_response = await server.call_tool(
+        "inspect_candidate_bundle_detail",
+        {"path": str(inspect_bundle)},
+    )
+    detail_payload = json.loads(detail_response)
+
+    assert detail_payload["skill"]["name"] == "review-bundle"
+    assert detail_payload["validation"]["valid"] is True
+    assert "Nearest canonical: repo-surveyor" in detail_payload["miner_report"]
 
 
 def test_inspect_candidate_bundle_returns_structured_metadata(skill_roots: tuple[Path, Path]) -> None:
@@ -470,6 +486,36 @@ def test_inspect_candidate_bundle_returns_structured_metadata(skill_roots: tuple
     assert record.packaging_allowed is True
     assert record.source.commit == "abc123def"
     assert record.source.fingerprint == "repo-fingerprint-1"
+
+
+def test_inspect_candidate_bundle_detail_includes_validation_and_report(
+    skill_roots: tuple[Path, Path],
+) -> None:
+    canonical_root, install_root = skill_roots
+    _write_catalog(canonical_root, [])
+    bundle_dir = _write_candidate_bundle(
+        canonical_root / "candidate-bundles",
+        name="hidden-repo-surveyor",
+        description="Use when inspecting hidden directories and orchestration files in a repository.",
+    )
+
+    client = SynthesisClient(
+        provider_type="mock",
+        canonical_repo_path=str(canonical_root),
+        host_root=str(install_root),
+    )
+
+    detail = client.inspect_candidate_bundle_detail(str(bundle_dir))
+
+    assert detail is not None
+    assert detail.skill.name == "hidden-repo-surveyor"
+    assert detail.validation.valid is True
+    assert detail.miner_report is not None
+    assert "Nearest canonical: repo-surveyor" in detail.miner_report
+    assert detail.provenance["source_commit"] == "abc123def"
+    assert detail.governance["submission_type"] == "variant_candidate"
+    assert detail.binary_files == ["assets/example.bin"]
+    assert "MINER_REPORT.md" in detail.text_files
 
 
 def test_submit_candidate_bundle_prepares_submission_with_metadata(

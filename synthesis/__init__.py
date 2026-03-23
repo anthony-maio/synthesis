@@ -29,6 +29,7 @@ from synthesis.client import (
     SynthesisClient,
 )
 from synthesis.core.models import (
+    CandidateBundleInspection,
     CandidateBundleValidation,
     Capability,
     CapabilityCategory,
@@ -58,6 +59,7 @@ __all__ = [
     "SynthesisMCPServer",
     "Capability",
     "CapabilityCategory",
+    "CandidateBundleInspection",
     "CandidateBundleValidation",
     "TrustLevel",
     "RiskLevel",

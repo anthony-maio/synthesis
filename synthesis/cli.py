@@ -40,6 +40,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     inspect_bundle.add_argument("path")
 
+    inspect_bundle_detail = subparsers.add_parser(
+        "inspect-candidate-bundle-detail",
+        help="Return reviewer-facing details for a miner-produced challenger bundle.",
+    )
+    inspect_bundle_detail.add_argument("path")
+
     validate_bundle = subparsers.add_parser(
         "validate-candidate-bundle",
         help="Validate a miner-produced challenger bundle by path.",
@@ -93,6 +99,14 @@ async def run_command(args: argparse.Namespace) -> Any:
         return (
             record.model_dump()
             if record
+            else {"success": False, "error": "candidate bundle not found or invalid"}
+        )
+
+    if args.command == "inspect-candidate-bundle-detail":
+        detail = client.inspect_candidate_bundle_detail(args.path)
+        return (
+            detail.model_dump()
+            if detail
             else {"success": False, "error": "candidate bundle not found or invalid"}
         )
 

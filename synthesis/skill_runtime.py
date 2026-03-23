@@ -1056,6 +1056,19 @@ def load_candidate_bundle(
     return record, text_files, binary_files
 
 
+def inspect_candidate_bundle(
+    bundle_path: str | Path,
+    *,
+    repo: Optional[str] = None,
+) -> tuple[SkillRecord, Dict[str, object], Dict[str, object], Dict[str, str], Dict[str, bytes]]:
+    """Load a candidate bundle plus raw metadata for reviewer-facing inspection."""
+    root = Path(bundle_path).expanduser()
+    governance = _read_json_file(root / "REGISTRY.json")
+    provenance = _read_json_file(root / "PROVENANCE.json")
+    record, text_files, binary_files = load_candidate_bundle(root, repo=repo)
+    return record, governance, provenance, text_files, binary_files
+
+
 def _keywords_from_intent(intent: str) -> List[str]:
     """Derive stable keywords from the intent."""
     seen = []

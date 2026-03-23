@@ -155,6 +155,18 @@ class CandidateBundleValidation(BaseModel):
     skill: Optional["SkillRecord"] = None
 
 
+class CandidateBundleInspection(BaseModel):
+    """Reviewer-facing inspection payload for a candidate bundle."""
+
+    skill: SkillRecord
+    validation: CandidateBundleValidation
+    governance: Dict[str, Any] = Field(default_factory=dict)
+    provenance: Dict[str, Any] = Field(default_factory=dict)
+    miner_report: Optional[str] = None
+    text_files: List[str] = Field(default_factory=list)
+    binary_files: List[str] = Field(default_factory=list)
+
+
 class SkillSubmission(BaseModel):
     """PR-ready submission metadata for a synthesized or curated skill."""
 
