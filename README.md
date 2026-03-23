@@ -118,6 +118,7 @@ synthesis inspect-candidate-bundle ./candidate-bundle
 synthesis inspect-candidate-bundle-detail ./candidate-bundle
 synthesis inspect-candidate-bundle-review ./candidate-bundle
 synthesis prepare-candidate-bundle-submission ./candidate-bundle
+synthesis publish-candidate-bundle-submission ./candidate-bundle --open-pull-request
 synthesis validate-candidate-bundle ./candidate-bundle
 synthesis submit-candidate-bundle ./candidate-bundle
 synthesis install-candidate-bundle ./candidate-bundle --allow-challengers

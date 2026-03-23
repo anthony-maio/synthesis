@@ -82,6 +82,19 @@ class SynthesisMCPServer:
                 },
             },
             {
+                "name": "publish_candidate_bundle_submission",
+                "description": "Write a challenger bundle into the canonical checkout, commit it, push it, and optionally open a pull request.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "path": {"type": "string"},
+                        "open_pull_request": {"type": "boolean"},
+                        "base_branch": {"type": "string"},
+                    },
+                    "required": ["path"],
+                },
+            },
+            {
                 "name": "validate_candidate_bundle",
                 "description": "Validate a miner-produced challenger bundle by path.",
                 "inputSchema": {
@@ -182,6 +195,22 @@ class SynthesisMCPServer:
                     }
                 )
             return json.dumps(envelope.model_dump(), indent=2, default=str)
+
+        if name == "publish_candidate_bundle_submission":
+            bundle_path = str(arguments.get("path", ""))
+            result = self.client.publish_candidate_bundle_submission(
+                bundle_path,
+                open_pull_request=bool(arguments.get("open_pull_request", False)),
+                base_branch=str(arguments.get("base_branch", "main")),
+            )
+            if not result:
+                return json.dumps(
+                    {
+                        "success": False,
+                        "error": f"Candidate bundle '{bundle_path}' cannot be published",
+                    }
+                )
+            return json.dumps(result.model_dump(), indent=2, default=str)
 
         if name == "validate_candidate_bundle":
             bundle_path = str(arguments.get("path", ""))

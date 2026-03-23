@@ -221,6 +221,17 @@ class CandidateBundleSubmissionEnvelope(BaseModel):
     pull_request_body: str
 
 
+class SubmissionAutomationResult(BaseModel):
+    """Result of publishing a candidate submission envelope into the registry workflow."""
+
+    success: bool
+    branch: str
+    commit_sha: Optional[str] = None
+    pull_request_url: Optional[str] = None
+    envelope: CandidateBundleSubmissionEnvelope
+    warnings: List[str] = Field(default_factory=list)
+
+
 class SkillDraft(BaseModel):
     """Draft skill package produced by synthesis."""
 

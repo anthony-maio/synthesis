@@ -46,6 +46,7 @@ from synthesis.core.models import (
     SkillSource,
     SkillSourceType,
     SkillSubmission,
+    SubmissionAutomationResult,
     SynthesisAttempt,
     TestCase,
     TestSuite,
@@ -80,4 +81,5 @@ __all__ = [
     "SkillCompositionBundle",
     "SkillSubmission",
     "SkillDraft",
+    "SubmissionAutomationResult",
 ]

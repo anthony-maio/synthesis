@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import base64
+import shutil
+import subprocess
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -24,6 +26,7 @@ from synthesis.core.models import (
     SkillRecord,
     SkillSourceType,
     SkillSubmission,
+    SubmissionAutomationResult,
     TrustLevel,
 )
 from synthesis.llm.provider import LLMProvider, create_provider
@@ -451,6 +454,97 @@ class SynthesisClient:
             pull_request_body=_render_candidate_pull_request_body(review),
         )
 
+    def publish_candidate_bundle_submission(
+        self,
+        bundle_path: str,
+        *,
+        open_pull_request: bool = False,
+        base_branch: str = "main",
+    ) -> Optional[SubmissionAutomationResult]:
+        """Publish a prepared candidate envelope into the canonical registry checkout."""
+        if not self.canonical_repository:
+            return None
+
+        envelope = self.prepare_candidate_bundle_submission(bundle_path)
+        if not envelope:
+            return None
+
+        repo_root = self.canonical_repository.root
+        if not (repo_root / ".git").exists():
+            return None
+
+        git_executable = shutil.which("git")
+        if not git_executable:
+            return None
+
+        self._run_command([git_executable, "checkout", "-B", envelope.submission.branch], cwd=repo_root)
+
+        target_dir = repo_root / envelope.submission.target_path
+        if target_dir.exists():
+            shutil.rmtree(target_dir)
+        target_dir.mkdir(parents=True, exist_ok=True)
+
+        for relative_path, content in envelope.submission.files.items():
+            destination = repo_root / relative_path
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_text(content, encoding="utf-8")
+        for relative_path, payload in envelope.submission.binary_files.items():
+            destination = repo_root / relative_path
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(base64.b64decode(payload.encode("ascii")))
+
+        warnings: List[str] = []
+        self._run_command([git_executable, "checkout", "-B", envelope.submission.branch], cwd=repo_root)
+        self._run_command([git_executable, "add", envelope.submission.target_path], cwd=repo_root)
+        self._run_command(
+            [
+                git_executable,
+                "commit",
+                "-m",
+                envelope.submission.title,
+                "-m",
+                envelope.pull_request_body,
+            ],
+            cwd=repo_root,
+        )
+        commit_sha = self._run_command([git_executable, "rev-parse", "HEAD"], cwd=repo_root).strip()
+        self._run_command(
+            [git_executable, "push", "-u", "origin", envelope.submission.branch],
+            cwd=repo_root,
+        )
+
+        pull_request_url: Optional[str] = None
+        if open_pull_request:
+            gh_executable = shutil.which("gh")
+            if not gh_executable:
+                warnings.append("GitHub CLI not available; skipped pull request creation.")
+            else:
+                pull_request_url = self._run_command(
+                    [
+                        gh_executable,
+                        "pr",
+                        "create",
+                        "--base",
+                        base_branch,
+                        "--head",
+                        envelope.submission.branch,
+                        "--title",
+                        envelope.submission.title,
+                        "--body",
+                        envelope.pull_request_body,
+                    ],
+                    cwd=repo_root,
+                ).strip() or None
+
+        return SubmissionAutomationResult(
+            success=True,
+            branch=envelope.submission.branch,
+            commit_sha=commit_sha or None,
+            pull_request_url=pull_request_url,
+            envelope=envelope,
+            warnings=warnings,
+        )
+
     def validate_candidate_bundle(self, bundle_path: str) -> CandidateBundleValidation:
         """Validate a miner-produced challenger bundle before install or submission."""
         try:
@@ -782,6 +876,17 @@ class SynthesisClient:
         if self.canonical_repository:
             return self.canonical_repository.repo_slug
         return DEFAULT_CANONICAL_REPO_SLUG
+
+    def _run_command(self, args: List[str], *, cwd: Path) -> str:
+        """Run one subprocess command and return stdout."""
+        completed = subprocess.run(
+            args,
+            cwd=str(cwd),
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        return completed.stdout.strip()
 
     def _get_llm_provider(self) -> LLMProvider:
         """Create the provider only when synthesis needs it."""

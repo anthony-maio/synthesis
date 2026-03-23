@@ -426,6 +426,7 @@ async def test_mcp_server_exposes_skill_management_tools(
         "install_candidate_bundle",
         "list_installed_skills",
         "prepare_candidate_bundle_submission",
+        "publish_candidate_bundle_submission",
         "validate_candidate_bundle",
         "submit_candidate_bundle",
         "submit_skill",
@@ -693,6 +694,90 @@ def test_prepare_candidate_bundle_submission_blocks_invalid_bundle(
     )
 
     assert client.prepare_candidate_bundle_submission(str(bundle_dir)) is None
+
+
+def test_publish_candidate_bundle_submission_writes_files_and_runs_git(
+    skill_roots: tuple[Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    canonical_root, install_root = skill_roots
+    _write_catalog(canonical_root, [])
+    (canonical_root / ".git").mkdir()
+    bundle_dir = _write_candidate_bundle(
+        canonical_root / "candidate-bundles",
+        name="publish-bundle",
+        description="Use when publishing a candidate bundle into the registry checkout.",
+    )
+
+    commands: list[list[str]] = []
+
+    def fake_run(self: object, args: list[str], cwd: Path) -> str:
+        commands.append(args)
+        if args[-2:] == ["rev-parse", "HEAD"]:
+            return "deadbeef"
+        return ""
+
+    monkeypatch.setattr("shutil.which", lambda name: name)
+
+    client = SynthesisClient(
+        provider_type="mock",
+        canonical_repo_path=str(canonical_root),
+        host_root=str(install_root),
+    )
+    monkeypatch.setattr(client, "_run_command", fake_run.__get__(client, SynthesisClient))
+
+    result = client.publish_candidate_bundle_submission(str(bundle_dir))
+
+    assert result is not None
+    assert result.success is True
+    assert result.pull_request_url is None
+    assert result.branch == "synthesis/publish-bundle"
+    assert (canonical_root / "skills" / "publish-bundle" / "SKILL.md").exists()
+    assert any(command[:3] == ["git", "checkout", "-B"] for command in commands)
+    assert any(command[:2] == ["git", "add"] for command in commands)
+    assert any(command[:2] == ["git", "commit"] for command in commands)
+    assert any(command[:2] == ["git", "push"] for command in commands)
+
+
+def test_publish_candidate_bundle_submission_can_open_pull_request(
+    skill_roots: tuple[Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    canonical_root, install_root = skill_roots
+    _write_catalog(canonical_root, [])
+    (canonical_root / ".git").mkdir()
+    bundle_dir = _write_candidate_bundle(
+        canonical_root / "candidate-bundles",
+        name="pr-bundle",
+        description="Use when opening a pull request for a candidate bundle.",
+    )
+
+    commands: list[list[str]] = []
+
+    def fake_run(self: object, args: list[str], cwd: Path) -> str:
+        commands.append(args)
+        if args[:3] == ["gh", "pr", "create"]:
+            return "https://github.com/anthony-maio/synthesis-skills/pull/123"
+        return ""
+
+    monkeypatch.setattr("shutil.which", lambda name: name)
+
+    client = SynthesisClient(
+        provider_type="mock",
+        canonical_repo_path=str(canonical_root),
+        host_root=str(install_root),
+    )
+    monkeypatch.setattr(client, "_run_command", fake_run.__get__(client, SynthesisClient))
+
+    result = client.publish_candidate_bundle_submission(
+        str(bundle_dir),
+        open_pull_request=True,
+    )
+
+    assert result is not None
+    assert result.success is True
+    assert result.pull_request_url == "https://github.com/anthony-maio/synthesis-skills/pull/123"
+    assert any(command[:3] == ["gh", "pr", "create"] for command in commands)
 
 
 def test_validate_candidate_bundle_rejects_missing_variant_context(

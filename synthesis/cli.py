@@ -58,6 +58,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     prepare_bundle_submission.add_argument("path")
 
+    publish_bundle_submission = subparsers.add_parser(
+        "publish-candidate-bundle-submission",
+        help="Publish a candidate submission envelope into the canonical registry checkout.",
+    )
+    publish_bundle_submission.add_argument("path")
+    publish_bundle_submission.add_argument("--open-pull-request", action="store_true")
+    publish_bundle_submission.add_argument("--base-branch", default="main")
+
     validate_bundle = subparsers.add_parser(
         "validate-candidate-bundle",
         help="Validate a miner-produced challenger bundle by path.",
@@ -136,6 +144,18 @@ async def run_command(args: argparse.Namespace) -> Any:
             envelope.model_dump()
             if envelope
             else {"success": False, "error": "candidate bundle cannot be prepared"}
+        )
+
+    if args.command == "publish-candidate-bundle-submission":
+        result = client.publish_candidate_bundle_submission(
+            args.path,
+            open_pull_request=args.open_pull_request,
+            base_branch=args.base_branch,
+        )
+        return (
+            result.model_dump()
+            if result
+            else {"success": False, "error": "candidate bundle cannot be published"}
         )
 
     if args.command == "validate-candidate-bundle":
