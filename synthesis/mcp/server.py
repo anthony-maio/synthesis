@@ -6,6 +6,7 @@ import json
 from typing import Dict, List
 
 from synthesis.client import SynthesisClient
+from synthesis.core.models import SkillInstallPolicy
 
 
 class SynthesisMCPServer:
@@ -45,12 +46,54 @@ class SynthesisMCPServer:
                 },
             },
             {
+                "name": "inspect_candidate_bundle",
+                "description": "Inspect a miner-produced challenger bundle by path.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {"path": {"type": "string"}},
+                    "required": ["path"],
+                },
+            },
+            {
+                "name": "validate_candidate_bundle",
+                "description": "Validate a miner-produced challenger bundle by path.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {"path": {"type": "string"}},
+                    "required": ["path"],
+                },
+            },
+            {
                 "name": "submit_skill",
                 "description": "Prepare a PR-ready submission for an installed skill.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {"name": {"type": "string"}},
                     "required": ["name"],
+                },
+            },
+            {
+                "name": "submit_candidate_bundle",
+                "description": "Prepare a PR-ready submission from a miner-produced challenger bundle.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {"path": {"type": "string"}},
+                    "required": ["path"],
+                },
+            },
+            {
+                "name": "install_candidate_bundle",
+                "description": "Install a validated challenger bundle into the local host root.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "path": {"type": "string"},
+                        "allow_drafts": {"type": "boolean"},
+                        "allow_challengers": {"type": "boolean"},
+                        "allow_canonical": {"type": "boolean"},
+                        "require_packaging_allowed": {"type": "boolean"},
+                    },
+                    "required": ["path"],
                 },
             },
         ]
@@ -74,6 +117,20 @@ class SynthesisMCPServer:
                 return json.dumps({"success": False, "error": f"Skill '{skill_name}' not found"})
             return json.dumps(record.model_dump(), indent=2, default=str)
 
+        if name == "inspect_candidate_bundle":
+            bundle_path = str(arguments.get("path", ""))
+            record = self.client.inspect_candidate_bundle(bundle_path)
+            if not record:
+                return json.dumps(
+                    {"success": False, "error": f"Candidate bundle '{bundle_path}' not found"}
+                )
+            return json.dumps(record.model_dump(), indent=2, default=str)
+
+        if name == "validate_candidate_bundle":
+            bundle_path = str(arguments.get("path", ""))
+            validation = self.client.validate_candidate_bundle(bundle_path)
+            return json.dumps(validation.model_dump(), indent=2, default=str)
+
         if name == "submit_skill":
             skill_name = str(arguments.get("name", ""))
             submission = self.client.submit_skill(skill_name)
@@ -82,6 +139,40 @@ class SynthesisMCPServer:
                     {"success": False, "error": f"Skill '{skill_name}' cannot be submitted"}
                 )
             return json.dumps(submission.model_dump(), indent=2, default=str)
+
+        if name == "submit_candidate_bundle":
+            bundle_path = str(arguments.get("path", ""))
+            submission = self.client.submit_candidate_bundle(bundle_path)
+            if not submission:
+                return json.dumps(
+                    {
+                        "success": False,
+                        "error": f"Candidate bundle '{bundle_path}' cannot be submitted",
+                    }
+                )
+            return json.dumps(submission.model_dump(), indent=2, default=str)
+
+        if name == "install_candidate_bundle":
+            bundle_path = str(arguments.get("path", ""))
+            record = self.client.install_candidate_bundle(
+                bundle_path,
+                policy=SkillInstallPolicy(
+                    allow_drafts=bool(arguments.get("allow_drafts", False)),
+                    allow_challengers=bool(arguments.get("allow_challengers", False)),
+                    allow_canonical=bool(arguments.get("allow_canonical", True)),
+                    require_packaging_allowed=bool(
+                        arguments.get("require_packaging_allowed", True)
+                    ),
+                ),
+            )
+            if not record:
+                return json.dumps(
+                    {
+                        "success": False,
+                        "error": f"Candidate bundle '{bundle_path}' cannot be installed",
+                    }
+                )
+            return json.dumps(record.model_dump(), indent=2, default=str)
 
         return json.dumps({"success": False, "error": f"Unknown tool '{name}'"})
 

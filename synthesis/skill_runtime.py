@@ -226,10 +226,20 @@ def build_skill_record(
     capability_family: Optional[str] = None,
     is_primary: bool = False,
     variant_of: Optional[str] = None,
+    variant_reason: Optional[str] = None,
     supersedes: Optional[List[str]] = None,
     submission_type: Optional[str] = None,
     nearest_canonical: Optional[str] = None,
     evidence_summary: Optional[str] = None,
+    family_confidence: Optional[float] = None,
+    disposition_confidence: Optional[float] = None,
+    disposition_reason_codes: Optional[List[str]] = None,
+    registry_snapshot_version: Optional[str] = None,
+    license_status: Optional[str] = None,
+    license_expression: Optional[str] = None,
+    packaging_allowed: Optional[bool] = None,
+    source_commit: Optional[str] = None,
+    source_fingerprint: Optional[str] = None,
     score: float = 0.0,
 ) -> SkillRecord:
     """Construct a skill record with normalized values."""
@@ -245,16 +255,26 @@ def build_skill_record(
             relative_path=relative_path,
             install_root=install_root,
             upstream=upstream,
+            commit=source_commit,
+            fingerprint=source_fingerprint,
         ),
         install_state=install_state,
         lifecycle_stage=lifecycle_stage,
         capability_family=capability_family or name,
         is_primary=is_primary,
         variant_of=variant_of,
+        variant_reason=variant_reason,
         supersedes=supersedes or [],
         submission_type=submission_type,
         nearest_canonical=nearest_canonical,
         evidence_summary=evidence_summary,
+        family_confidence=family_confidence,
+        disposition_confidence=disposition_confidence,
+        disposition_reason_codes=disposition_reason_codes or [],
+        registry_snapshot_version=registry_snapshot_version,
+        license_status=license_status,
+        license_expression=license_expression,
+        packaging_allowed=packaging_allowed,
         relative_path=relative_path,
         install_path=str(Path(install_root) / name) if install_root else None,
         score=score,
@@ -321,6 +341,7 @@ class LocalSkillRepository:
                     or skill_dir.name,
                     is_primary=bool(install_metadata.get("is_primary", False)),
                     variant_of=_coerce_optional(install_metadata.get("variant_of")),
+                    variant_reason=_coerce_optional(install_metadata.get("variant_reason")),
                     supersedes=_coerce_keywords(install_metadata.get("supersedes")),
                     submission_type=_coerce_optional(install_metadata.get("submission_type")),
                     nearest_canonical=_coerce_optional(
@@ -328,6 +349,29 @@ class LocalSkillRepository:
                     ),
                     evidence_summary=_coerce_optional(
                         install_metadata.get("evidence_summary")
+                    ),
+                    family_confidence=_coerce_float(
+                        install_metadata.get("family_confidence")
+                    ),
+                    disposition_confidence=_coerce_float(
+                        install_metadata.get("disposition_confidence")
+                    ),
+                    disposition_reason_codes=_coerce_keywords(
+                        install_metadata.get("disposition_reason_codes")
+                    ),
+                    registry_snapshot_version=_coerce_optional(
+                        install_metadata.get("registry_snapshot_version")
+                    ),
+                    license_status=_coerce_optional(install_metadata.get("license_status")),
+                    license_expression=_coerce_optional(
+                        install_metadata.get("license_expression")
+                    ),
+                    packaging_allowed=_coerce_optional_bool(
+                        install_metadata.get("packaging_allowed")
+                    ),
+                    source_commit=_coerce_optional(install_metadata.get("source_commit")),
+                    source_fingerprint=_coerce_optional(
+                        install_metadata.get("source_fingerprint")
                     ),
                 )
             )
@@ -354,10 +398,20 @@ class LocalSkillRepository:
         capability_family: Optional[str] = None,
         is_primary: bool = False,
         variant_of: Optional[str] = None,
+        variant_reason: Optional[str] = None,
         supersedes: Optional[List[str]] = None,
         submission_type: Optional[str] = None,
         nearest_canonical: Optional[str] = None,
         evidence_summary: Optional[str] = None,
+        family_confidence: Optional[float] = None,
+        disposition_confidence: Optional[float] = None,
+        disposition_reason_codes: Optional[List[str]] = None,
+        registry_snapshot_version: Optional[str] = None,
+        license_status: Optional[str] = None,
+        license_expression: Optional[str] = None,
+        packaging_allowed: Optional[bool] = None,
+        source_commit: Optional[str] = None,
+        source_fingerprint: Optional[str] = None,
     ) -> SkillRecord:
         """Install a synthesized or copied skill into the host root."""
         target_dir = self.root / name
@@ -383,10 +437,20 @@ class LocalSkillRepository:
                     "capability_family": capability_family or name,
                     "is_primary": is_primary,
                     "variant_of": variant_of,
+                    "variant_reason": variant_reason,
                     "supersedes": supersedes or [],
                     "submission_type": submission_type,
                     "nearest_canonical": nearest_canonical,
                     "evidence_summary": evidence_summary,
+                    "family_confidence": family_confidence,
+                    "disposition_confidence": disposition_confidence,
+                    "disposition_reason_codes": disposition_reason_codes or [],
+                    "registry_snapshot_version": registry_snapshot_version,
+                    "license_status": license_status,
+                    "license_expression": license_expression,
+                    "packaging_allowed": packaging_allowed,
+                    "source_commit": source_commit,
+                    "source_fingerprint": source_fingerprint,
                 },
                 indent=2,
             ),
@@ -409,10 +473,20 @@ class LocalSkillRepository:
             capability_family=capability_family or name,
             is_primary=is_primary,
             variant_of=variant_of,
+            variant_reason=variant_reason,
             supersedes=supersedes,
             submission_type=submission_type,
             nearest_canonical=nearest_canonical,
             evidence_summary=evidence_summary,
+            family_confidence=family_confidence,
+            disposition_confidence=disposition_confidence,
+            disposition_reason_codes=disposition_reason_codes,
+            registry_snapshot_version=registry_snapshot_version,
+            license_status=license_status,
+            license_expression=license_expression,
+            packaging_allowed=packaging_allowed,
+            source_commit=source_commit,
+            source_fingerprint=source_fingerprint,
         )
 
     def update_metadata(
@@ -425,10 +499,20 @@ class LocalSkillRepository:
         capability_family: Optional[str] = None,
         is_primary: Optional[bool] = None,
         variant_of: Optional[str] = None,
+        variant_reason: Optional[str] = None,
         supersedes: Optional[List[str]] = None,
         submission_type: Optional[str] = None,
         nearest_canonical: Optional[str] = None,
         evidence_summary: Optional[str] = None,
+        family_confidence: Optional[float] = None,
+        disposition_confidence: Optional[float] = None,
+        disposition_reason_codes: Optional[List[str]] = None,
+        registry_snapshot_version: Optional[str] = None,
+        license_status: Optional[str] = None,
+        license_expression: Optional[str] = None,
+        packaging_allowed: Optional[bool] = None,
+        source_commit: Optional[str] = None,
+        source_fingerprint: Optional[str] = None,
     ) -> Optional[SkillRecord]:
         """Update the local sidecar metadata for one installed skill."""
         skill_dir = self.root / name
@@ -450,6 +534,8 @@ class LocalSkillRepository:
             existing["is_primary"] = is_primary
         if variant_of is not None:
             existing["variant_of"] = variant_of
+        if variant_reason is not None:
+            existing["variant_reason"] = variant_reason
         if supersedes is not None:
             existing["supersedes"] = supersedes
         if submission_type is not None:
@@ -458,6 +544,24 @@ class LocalSkillRepository:
             existing["nearest_canonical"] = nearest_canonical
         if evidence_summary is not None:
             existing["evidence_summary"] = evidence_summary
+        if family_confidence is not None:
+            existing["family_confidence"] = family_confidence
+        if disposition_confidence is not None:
+            existing["disposition_confidence"] = disposition_confidence
+        if disposition_reason_codes is not None:
+            existing["disposition_reason_codes"] = disposition_reason_codes
+        if registry_snapshot_version is not None:
+            existing["registry_snapshot_version"] = registry_snapshot_version
+        if license_status is not None:
+            existing["license_status"] = license_status
+        if license_expression is not None:
+            existing["license_expression"] = license_expression
+        if packaging_allowed is not None:
+            existing["packaging_allowed"] = packaging_allowed
+        if source_commit is not None:
+            existing["source_commit"] = source_commit
+        if source_fingerprint is not None:
+            existing["source_fingerprint"] = source_fingerprint
 
         metadata_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
         return self.get(name)
@@ -638,10 +742,24 @@ class CanonicalSkillRepository:
             or str(entry["name"]),
             is_primary=bool(governance.get("is_primary", source_type == SkillSourceType.CANONICAL)),
             variant_of=_coerce_optional(governance.get("variant_of")),
+            variant_reason=_coerce_optional(governance.get("variant_reason")),
             supersedes=_coerce_keywords(governance.get("supersedes")),
             submission_type=_coerce_optional(governance.get("submission_type")),
             nearest_canonical=_coerce_optional(governance.get("nearest_canonical")),
             evidence_summary=_coerce_optional(governance.get("evidence_summary")),
+            family_confidence=_coerce_float(governance.get("family_confidence")),
+            disposition_confidence=_coerce_float(governance.get("disposition_confidence")),
+            disposition_reason_codes=_coerce_keywords(
+                governance.get("disposition_reason_codes")
+            ),
+            registry_snapshot_version=_coerce_optional(
+                governance.get("registry_snapshot_version")
+            ),
+            license_status=_coerce_optional(entry.get("license_status")),
+            license_expression=_coerce_optional(entry.get("license_expression")),
+            packaging_allowed=_coerce_optional_bool(entry.get("packaging_allowed")),
+            source_commit=_coerce_optional(entry.get("source_commit")),
+            source_fingerprint=_coerce_optional(entry.get("source_fingerprint")),
         )
 
 
@@ -674,10 +792,20 @@ class CodexHostAdapter:
         capability_family: Optional[str] = None,
         is_primary: bool = False,
         variant_of: Optional[str] = None,
+        variant_reason: Optional[str] = None,
         supersedes: Optional[List[str]] = None,
         submission_type: Optional[str] = None,
         nearest_canonical: Optional[str] = None,
         evidence_summary: Optional[str] = None,
+        family_confidence: Optional[float] = None,
+        disposition_confidence: Optional[float] = None,
+        disposition_reason_codes: Optional[List[str]] = None,
+        registry_snapshot_version: Optional[str] = None,
+        license_status: Optional[str] = None,
+        license_expression: Optional[str] = None,
+        packaging_allowed: Optional[bool] = None,
+        source_commit: Optional[str] = None,
+        source_fingerprint: Optional[str] = None,
     ) -> SkillRecord:
         """Install files into the host root."""
         return self.repository.install_files(
@@ -692,10 +820,20 @@ class CodexHostAdapter:
             capability_family=capability_family,
             is_primary=is_primary,
             variant_of=variant_of,
+            variant_reason=variant_reason,
             supersedes=supersedes,
             submission_type=submission_type,
             nearest_canonical=nearest_canonical,
             evidence_summary=evidence_summary,
+            family_confidence=family_confidence,
+            disposition_confidence=disposition_confidence,
+            disposition_reason_codes=disposition_reason_codes,
+            registry_snapshot_version=registry_snapshot_version,
+            license_status=license_status,
+            license_expression=license_expression,
+            packaging_allowed=packaging_allowed,
+            source_commit=source_commit,
+            source_fingerprint=source_fingerprint,
         )
 
     def activation_message(self) -> str:
@@ -803,6 +941,119 @@ def _coerce_optional(value: object) -> Optional[str]:
         return None
     text = str(value)
     return text or None
+
+
+def _coerce_float(value: object) -> Optional[float]:
+    """Return a float or None."""
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _coerce_optional_bool(value: object) -> Optional[bool]:
+    """Return a bool or None."""
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in {"true", "1", "yes"}:
+            return True
+        if lowered in {"false", "0", "no"}:
+            return False
+    return None
+
+
+def _read_json_file(path: Path) -> Dict[str, object]:
+    """Read one JSON file, returning an empty object on failure."""
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _bundle_source_type(provenance: Dict[str, object]) -> SkillSourceType:
+    """Map provenance kind to a best-effort source type."""
+    kind = _coerce_optional(provenance.get("kind"))
+    if kind in {"mirrored_external", "adapted_external"}:
+        return SkillSourceType.CURATED
+    if kind == "first_party":
+        return SkillSourceType.SYNTHESIZED
+    return SkillSourceType.LOCAL
+
+
+def load_candidate_bundle(
+    bundle_path: str | Path,
+    *,
+    repo: Optional[str] = None,
+) -> tuple[SkillRecord, Dict[str, str], Dict[str, bytes]]:
+    """Load a miner-produced challenger bundle from disk."""
+    root = Path(bundle_path).expanduser()
+    skill_file = root / "SKILL.md"
+    registry_file = root / "REGISTRY.json"
+    provenance_file = root / "PROVENANCE.json"
+    if not root.is_dir() or not skill_file.exists() or not registry_file.exists() or not provenance_file.exists():
+        raise FileNotFoundError("Candidate bundle must include SKILL.md, REGISTRY.json, and PROVENANCE.json")
+
+    front_matter = parse_front_matter(skill_file.read_text(encoding="utf-8"))
+    governance = _read_json_file(registry_file)
+    provenance = _read_json_file(provenance_file)
+
+    text_files: Dict[str, str] = {}
+    binary_files: Dict[str, bytes] = {}
+    for file_path in root.rglob("*"):
+        if not file_path.is_file():
+            continue
+        relative_path = str(file_path.relative_to(root)).replace("\\", "/")
+        payload = file_path.read_bytes()
+        if b"\x00" in payload:
+            binary_files[relative_path] = payload
+            continue
+        try:
+            text_files[relative_path] = payload.decode("utf-8")
+        except UnicodeDecodeError:
+            binary_files[relative_path] = payload
+
+    record = build_skill_record(
+        name=str(front_matter.get("name", root.name)),
+        description=str(front_matter.get("description", "")),
+        keywords=_coerce_keywords(front_matter.get("keywords")),
+        trust_level=TrustLevel(str(governance.get("trust_level", TrustLevel.PROBATION.value))),
+        source_type=_bundle_source_type(provenance),
+        repo=repo,
+        relative_path=root.name,
+        upstream=_coerce_optional(provenance.get("upstream"))
+        or _coerce_optional(provenance.get("source")),
+        install_state=SkillInstallState.SUBMITTED,
+        lifecycle_stage=SkillLifecycleStage(
+            str(governance.get("lifecycle_stage", SkillLifecycleStage.CHALLENGER.value))
+        ),
+        capability_family=_coerce_optional(governance.get("capability_family")) or root.name,
+        is_primary=bool(governance.get("is_primary", False)),
+        variant_of=_coerce_optional(governance.get("variant_of")),
+        variant_reason=_coerce_optional(governance.get("variant_reason")),
+        supersedes=_coerce_keywords(governance.get("supersedes")),
+        submission_type=_coerce_optional(governance.get("submission_type")),
+        nearest_canonical=_coerce_optional(governance.get("nearest_canonical")),
+        evidence_summary=_coerce_optional(governance.get("evidence_summary")),
+        family_confidence=_coerce_float(governance.get("family_confidence")),
+        disposition_confidence=_coerce_float(governance.get("disposition_confidence")),
+        disposition_reason_codes=_coerce_keywords(governance.get("disposition_reason_codes")),
+        registry_snapshot_version=_coerce_optional(
+            governance.get("registry_snapshot_version")
+        ),
+        license_status=_coerce_optional(provenance.get("license_status")),
+        license_expression=_coerce_optional(provenance.get("license_expression")),
+        packaging_allowed=_coerce_optional_bool(provenance.get("packaging_allowed")),
+        source_commit=_coerce_optional(provenance.get("source_commit")),
+        source_fingerprint=_coerce_optional(provenance.get("source_fingerprint")),
+    )
+    return record, text_files, binary_files
 
 
 def _keywords_from_intent(intent: str) -> List[str]:

@@ -29,6 +29,7 @@ Canonical registry: [anthony-maio/synthesis-skills](https://github.com/anthony-m
 - Composition before synthesis
 - Draft skills stay local and untrusted until review
 - Lifecycle-aware flow for draft, challenger, and canonical skills
+- Miner-produced challenger bundles can be inspected and submitted directly
 - Static website source lives in `website/` and is synced to `synthesis-web`
 
 ## Status
@@ -113,6 +114,10 @@ By default, Synthesis targets the canonical public registry at `anthony-maio/syn
 ```bash
 synthesis acquire-skill "parse csv files"
 synthesis list-installed-skills
+synthesis inspect-candidate-bundle ./candidate-bundle
+synthesis validate-candidate-bundle ./candidate-bundle
+synthesis submit-candidate-bundle ./candidate-bundle
+synthesis install-candidate-bundle ./candidate-bundle --allow-challengers
 ```
 
 ## Development

@@ -11,9 +11,11 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from synthesis.core.models import (
+    CandidateBundleValidation,
     CapabilityCategory,
     SkillCompositionBundle,
     SkillDraft,
+    SkillInstallPolicy,
     SkillInstallState,
     SkillLifecycleStage,
     SkillRecord,
@@ -31,11 +33,19 @@ from synthesis.skill_runtime import (
     SkillSynthesizer,
     compose_skills,
     default_canonical_repo_path,
+    load_candidate_bundle,
     render_provenance_metadata,
     render_registry_metadata,
     score_skill,
     tokenize,
 )
+
+ALLOWED_VARIANT_REASONS = {
+    "host_runtime",
+    "tool_surface",
+    "security_model",
+    "distinct_workflow",
+}
 
 
 class ResolutionMethod(Enum):
@@ -296,6 +306,58 @@ class SynthesisClient:
                 return skill
         return None
 
+    def inspect_candidate_bundle(self, bundle_path: str) -> Optional[SkillRecord]:
+        """Inspect a miner-produced challenger bundle without installing it."""
+        try:
+            record, _, _ = load_candidate_bundle(bundle_path, repo=self._canonical_repo_name())
+        except FileNotFoundError:
+            return None
+        return record
+
+    def validate_candidate_bundle(self, bundle_path: str) -> CandidateBundleValidation:
+        """Validate a miner-produced challenger bundle before install or submission."""
+        try:
+            record, _, _ = load_candidate_bundle(bundle_path, repo=self._canonical_repo_name())
+        except FileNotFoundError:
+            return CandidateBundleValidation(
+                valid=False,
+                errors=["Candidate bundle must include SKILL.md, REGISTRY.json, and PROVENANCE.json."],
+            )
+
+        errors: List[str] = []
+        warnings: List[str] = []
+
+        if record.lifecycle_stage != SkillLifecycleStage.CHALLENGER:
+            errors.append("Candidate bundles must use lifecycle_stage=challenger.")
+        if record.trust_level != TrustLevel.PROBATION:
+            errors.append("Candidate bundles must use trust_level=probation.")
+        if not record.capability_family:
+            errors.append("Candidate bundles must declare capability_family.")
+        if not record.submission_type:
+            errors.append("Candidate bundles must declare submission_type.")
+        if record.submission_type != "new_family_candidate" and not record.nearest_canonical:
+            errors.append(
+                "Candidate bundles must declare nearest_canonical for non-new-family submissions."
+            )
+        if record.submission_type == "variant_candidate":
+            if not record.variant_reason:
+                errors.append("Variant candidates must declare variant_reason.")
+            elif record.variant_reason not in ALLOWED_VARIANT_REASONS:
+                errors.append(
+                    "Variant candidates must use a supported variant_reason."
+                )
+        if record.packaging_allowed is not True:
+            errors.append("Candidate bundles must be license-cleared with packaging_allowed=true.")
+        if not record.license_status:
+            warnings.append("Candidate bundle is missing explicit license_status metadata.")
+
+        return CandidateBundleValidation(
+            valid=not errors,
+            errors=errors,
+            warnings=warnings,
+            skill=record,
+        )
+
     def submit_skill(self, name: str) -> Optional[SkillSubmission]:
         """Prepare a submission for an installed skill."""
         installed = self.local_repository.get(name)
@@ -417,6 +479,102 @@ class SynthesisClient:
             evidence_summary=evidence_summary,
         )
         return submission
+
+    def submit_candidate_bundle(self, bundle_path: str) -> Optional[SkillSubmission]:
+        """Prepare a submission directly from a miner-produced challenger bundle."""
+        if not self.canonical_repository:
+            return None
+
+        validation = self.validate_candidate_bundle(bundle_path)
+        if not validation.valid or validation.skill is None:
+            return None
+        record, files, binary_files = load_candidate_bundle(
+            bundle_path,
+            repo=self._canonical_repo_name(),
+        )
+
+        return SkillSubmission(
+            repo=self._canonical_repo_name(),
+            branch=f"synthesis/{record.name}",
+            title=f"Submit skill candidate: {record.name}",
+            status="prepared",
+            target_path=f"skills/{record.name}",
+            trust_level=record.trust_level,
+            lifecycle_stage=record.lifecycle_stage,
+            capability_family=record.capability_family,
+            submission_type=record.submission_type or "new_family_candidate",
+            variant_reason=record.variant_reason,
+            nearest_canonical=record.nearest_canonical,
+            evidence_summary=record.evidence_summary,
+            family_confidence=record.family_confidence,
+            disposition_confidence=record.disposition_confidence,
+            disposition_reason_codes=record.disposition_reason_codes,
+            registry_snapshot_version=record.registry_snapshot_version,
+            license_status=record.license_status,
+            license_expression=record.license_expression,
+            packaging_allowed=record.packaging_allowed,
+            files={f"skills/{record.name}/{path}": content for path, content in files.items()},
+            binary_files={
+                f"skills/{record.name}/{path}": base64.b64encode(content).decode("ascii")
+                for path, content in binary_files.items()
+            },
+        )
+
+    def install_candidate_bundle(
+        self,
+        bundle_path: str,
+        *,
+        policy: Optional[SkillInstallPolicy] = None,
+    ) -> Optional[SkillRecord]:
+        """Install a validated candidate bundle into the local host root."""
+        validation = self.validate_candidate_bundle(bundle_path)
+        if not validation.valid or validation.skill is None:
+            return None
+
+        install_policy = policy or SkillInstallPolicy()
+        record = validation.skill
+        if record.lifecycle_stage == SkillLifecycleStage.CHALLENGER and not install_policy.allow_challengers:
+            return None
+        if record.lifecycle_stage == SkillLifecycleStage.DRAFT and not install_policy.allow_drafts:
+            return None
+        if record.lifecycle_stage == SkillLifecycleStage.CANONICAL and not install_policy.allow_canonical:
+            return None
+        if install_policy.require_packaging_allowed and record.packaging_allowed is not True:
+            return None
+
+        _, text_files, binary_files = load_candidate_bundle(
+            bundle_path,
+            repo=self._canonical_repo_name(),
+        )
+        files: Dict[str, str | bytes] = dict(text_files)
+        files.update(binary_files)
+        return self.host_adapter.install_skill_files(
+            name=record.name,
+            files=files,
+            trust_level=record.trust_level,
+            source_type=record.source.type,
+            repo=record.source.repo,
+            upstream=record.source.upstream,
+            install_state=SkillInstallState.INSTALLED,
+            lifecycle_stage=record.lifecycle_stage,
+            capability_family=record.capability_family,
+            is_primary=record.is_primary,
+            variant_of=record.variant_of,
+            variant_reason=record.variant_reason,
+            supersedes=record.supersedes,
+            submission_type=record.submission_type,
+            nearest_canonical=record.nearest_canonical,
+            evidence_summary=record.evidence_summary,
+            family_confidence=record.family_confidence,
+            disposition_confidence=record.disposition_confidence,
+            disposition_reason_codes=record.disposition_reason_codes,
+            registry_snapshot_version=record.registry_snapshot_version,
+            license_status=record.license_status,
+            license_expression=record.license_expression,
+            packaging_allowed=record.packaging_allowed,
+            source_commit=record.source.commit,
+            source_fingerprint=record.source.fingerprint,
+        )
 
     def get_metrics(self) -> Dict[str, Any]:
         """Return summary metrics and current skill inventory."""

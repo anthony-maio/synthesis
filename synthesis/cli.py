@@ -7,7 +7,7 @@ import asyncio
 import json
 from typing import Any
 
-from synthesis import SynthesisClient
+from synthesis import SkillInstallPolicy, SynthesisClient
 from synthesis.skill_runtime import DEFAULT_CANONICAL_REPO_SLUG
 
 
@@ -34,8 +34,36 @@ def build_parser() -> argparse.ArgumentParser:
     inspect = subparsers.add_parser("inspect-skill", help="Inspect a skill by name.")
     inspect.add_argument("name")
 
+    inspect_bundle = subparsers.add_parser(
+        "inspect-candidate-bundle",
+        help="Inspect a miner-produced challenger bundle by path.",
+    )
+    inspect_bundle.add_argument("path")
+
+    validate_bundle = subparsers.add_parser(
+        "validate-candidate-bundle",
+        help="Validate a miner-produced challenger bundle by path.",
+    )
+    validate_bundle.add_argument("path")
+
     submit = subparsers.add_parser("submit-skill", help="Prepare a submission for an installed skill.")
     submit.add_argument("name")
+
+    submit_bundle = subparsers.add_parser(
+        "submit-candidate-bundle",
+        help="Prepare a submission from a miner-produced challenger bundle.",
+    )
+    submit_bundle.add_argument("path")
+
+    install_bundle = subparsers.add_parser(
+        "install-candidate-bundle",
+        help="Install a validated challenger bundle into the local host root.",
+    )
+    install_bundle.add_argument("path")
+    install_bundle.add_argument("--allow-drafts", action="store_true")
+    install_bundle.add_argument("--allow-challengers", action="store_true")
+    install_bundle.add_argument("--block-canonical", action="store_true")
+    install_bundle.add_argument("--ignore-packaging-gate", action="store_true")
 
     subparsers.add_parser("list-installed-skills", help="List installed skills.")
     return parser
@@ -60,12 +88,47 @@ async def run_command(args: argparse.Namespace) -> Any:
         record = client.inspect_skill(args.name)
         return record.model_dump() if record else {"success": False, "error": "skill not found"}
 
+    if args.command == "inspect-candidate-bundle":
+        record = client.inspect_candidate_bundle(args.path)
+        return (
+            record.model_dump()
+            if record
+            else {"success": False, "error": "candidate bundle not found or invalid"}
+        )
+
+    if args.command == "validate-candidate-bundle":
+        return client.validate_candidate_bundle(args.path).model_dump()
+
     if args.command == "submit-skill":
         submission = client.submit_skill(args.name)
         return (
             submission.model_dump()
             if submission
             else {"success": False, "error": "skill cannot be submitted"}
+        )
+
+    if args.command == "submit-candidate-bundle":
+        submission = client.submit_candidate_bundle(args.path)
+        return (
+            submission.model_dump()
+            if submission
+            else {"success": False, "error": "candidate bundle cannot be submitted"}
+        )
+
+    if args.command == "install-candidate-bundle":
+        record = client.install_candidate_bundle(
+            args.path,
+            policy=SkillInstallPolicy(
+                allow_drafts=args.allow_drafts,
+                allow_challengers=args.allow_challengers,
+                allow_canonical=not args.block_canonical,
+                require_packaging_allowed=not args.ignore_packaging_gate,
+            ),
+        )
+        return (
+            record.model_dump()
+            if record
+            else {"success": False, "error": "candidate bundle cannot be installed"}
         )
 
     raise ValueError(f"Unknown command: {args.command}")

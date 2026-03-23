@@ -8,6 +8,7 @@ import pytest
 
 from synthesis import (
     ResolutionMethod,
+    SkillInstallPolicy,
     SkillInstallState,
     SkillLifecycleStage,
     SynthesisClient,
@@ -64,6 +65,89 @@ def _write_local_skill(install_root: Path, name: str, description: str) -> None:
         ),
         encoding="utf-8",
     )
+
+
+def _write_candidate_bundle(bundle_root: Path, name: str, description: str) -> Path:
+    bundle_dir = bundle_root / name
+    bundle_dir.mkdir(parents=True, exist_ok=True)
+    (bundle_dir / "SKILL.md").write_text(
+        "\n".join(
+            [
+                "---",
+                f"name: {name}",
+                f"description: {description}",
+                "keywords:",
+                "  - review",
+                "  - workflow",
+                "---",
+                "",
+                f"# {name}",
+                "",
+                description,
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (bundle_dir / "REGISTRY.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "1",
+                "capability_family": "repo-surveyor",
+                "lifecycle_stage": "challenger",
+                "trust_level": "probation",
+                "is_primary": False,
+                "variant_of": None,
+                "supersedes": [],
+                "submission_type": "variant_candidate",
+                "nearest_canonical": "repo-surveyor",
+                "evidence_summary": "Preserves hidden-directory analysis from a mined workflow.",
+                "variant_reason": "distinct_workflow",
+                "family_confidence": 0.93,
+                "disposition_confidence": 0.84,
+                "disposition_reason_codes": [
+                    "family_match_strong",
+                    "variant_distinct_workflow",
+                ],
+                "registry_snapshot_version": "snapshot-2026-03-23",
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    (bundle_dir / "PROVENANCE.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "1",
+                "kind": "adapted_external",
+                "author": "Synthesis Skill Miner",
+                "source": "https://github.com/example/skill-source",
+                "upstream": "https://github.com/example/skill-source",
+                "source_commit": "abc123def",
+                "source_fingerprint": "repo-fingerprint-1",
+                "license_status": "permissive",
+                "license_expression": "MIT",
+                "packaging_allowed": True,
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    (bundle_dir / "MINER_REPORT.md").write_text(
+        "\n".join(
+            [
+                "# Miner Report",
+                "",
+                "Nearest canonical: repo-surveyor",
+                "",
+                "Why better or different: stronger hidden-directory inventory and workflow grouping.",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    asset = bundle_dir / "assets" / "example.bin"
+    asset.parent.mkdir(parents=True, exist_ok=True)
+    asset.write_bytes(b"\x00candidate-binary")
+    return bundle_dir
 
 
 @pytest.fixture
@@ -336,7 +420,11 @@ async def test_mcp_server_exposes_skill_management_tools(
     assert {tool["name"] for tool in tools} == {
         "acquire_skill",
         "inspect_skill",
+        "inspect_candidate_bundle",
+        "install_candidate_bundle",
         "list_installed_skills",
+        "validate_candidate_bundle",
+        "submit_candidate_bundle",
         "submit_skill",
     }
 
@@ -345,6 +433,144 @@ async def test_mcp_server_exposes_skill_management_tools(
 
     assert payload["success"] is True
     assert payload["primary_skill"]["name"] == "release-notes"
+
+
+def test_inspect_candidate_bundle_returns_structured_metadata(skill_roots: tuple[Path, Path]) -> None:
+    canonical_root, install_root = skill_roots
+    _write_catalog(canonical_root, [])
+    bundle_dir = _write_candidate_bundle(
+        canonical_root / "candidate-bundles",
+        name="hidden-repo-surveyor",
+        description="Use when inspecting hidden directories and orchestration files in a repository.",
+    )
+
+    client = SynthesisClient(
+        provider_type="mock",
+        canonical_repo_path=str(canonical_root),
+        host_root=str(install_root),
+    )
+
+    record = client.inspect_candidate_bundle(str(bundle_dir))
+
+    assert record is not None
+    assert record.name == "hidden-repo-surveyor"
+    assert record.lifecycle_stage == SkillLifecycleStage.CHALLENGER
+    assert record.capability_family == "repo-surveyor"
+    assert record.submission_type == "variant_candidate"
+    assert record.variant_reason == "distinct_workflow"
+    assert record.family_confidence == pytest.approx(0.93)
+    assert record.disposition_confidence == pytest.approx(0.84)
+    assert record.disposition_reason_codes == [
+        "family_match_strong",
+        "variant_distinct_workflow",
+    ]
+    assert record.registry_snapshot_version == "snapshot-2026-03-23"
+    assert record.license_status == "permissive"
+    assert record.license_expression == "MIT"
+    assert record.packaging_allowed is True
+    assert record.source.commit == "abc123def"
+    assert record.source.fingerprint == "repo-fingerprint-1"
+
+
+def test_submit_candidate_bundle_prepares_submission_with_metadata(
+    skill_roots: tuple[Path, Path],
+) -> None:
+    canonical_root, install_root = skill_roots
+    _write_catalog(canonical_root, [])
+    bundle_dir = _write_candidate_bundle(
+        canonical_root / "candidate-bundles",
+        name="hidden-repo-surveyor",
+        description="Use when inspecting hidden directories and orchestration files in a repository.",
+    )
+
+    client = SynthesisClient(
+        provider_type="mock",
+        canonical_repo_path=str(canonical_root),
+        host_root=str(install_root),
+    )
+
+    submission = client.submit_candidate_bundle(str(bundle_dir))
+
+    assert submission is not None
+    assert submission.lifecycle_stage == SkillLifecycleStage.CHALLENGER
+    assert submission.trust_level == TrustLevel.PROBATION
+    assert submission.capability_family == "repo-surveyor"
+    assert submission.submission_type == "variant_candidate"
+    assert submission.variant_reason == "distinct_workflow"
+    assert submission.family_confidence == pytest.approx(0.93)
+    assert submission.disposition_confidence == pytest.approx(0.84)
+    assert submission.disposition_reason_codes == [
+        "family_match_strong",
+        "variant_distinct_workflow",
+    ]
+    assert submission.registry_snapshot_version == "snapshot-2026-03-23"
+    assert submission.license_status == "permissive"
+    assert submission.license_expression == "MIT"
+    assert submission.packaging_allowed is True
+    assert submission.files["skills/hidden-repo-surveyor/MINER_REPORT.md"].startswith("# Miner Report")
+    assert submission.binary_files["skills/hidden-repo-surveyor/assets/example.bin"] == base64.b64encode(
+        b"\x00candidate-binary"
+    ).decode("ascii")
+
+
+def test_validate_candidate_bundle_rejects_missing_variant_context(
+    skill_roots: tuple[Path, Path],
+) -> None:
+    canonical_root, install_root = skill_roots
+    _write_catalog(canonical_root, [])
+    bundle_dir = _write_candidate_bundle(
+        canonical_root / "candidate-bundles",
+        name="hidden-repo-surveyor",
+        description="Use when inspecting hidden directories and orchestration files in a repository.",
+    )
+    registry_path = bundle_dir / "REGISTRY.json"
+    payload = json.loads(registry_path.read_text(encoding="utf-8"))
+    payload["nearest_canonical"] = None
+    registry_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+    client = SynthesisClient(
+        provider_type="mock",
+        canonical_repo_path=str(canonical_root),
+        host_root=str(install_root),
+    )
+
+    validation = client.validate_candidate_bundle(str(bundle_dir))
+
+    assert validation.valid is False
+    assert any("nearest_canonical" in error for error in validation.errors)
+    assert client.submit_candidate_bundle(str(bundle_dir)) is None
+
+
+def test_install_candidate_bundle_requires_explicit_policy_for_challengers(
+    skill_roots: tuple[Path, Path],
+) -> None:
+    canonical_root, install_root = skill_roots
+    _write_catalog(canonical_root, [])
+    bundle_dir = _write_candidate_bundle(
+        canonical_root / "candidate-bundles",
+        name="hidden-repo-surveyor",
+        description="Use when inspecting hidden directories and orchestration files in a repository.",
+    )
+
+    client = SynthesisClient(
+        provider_type="mock",
+        canonical_repo_path=str(canonical_root),
+        host_root=str(install_root),
+    )
+
+    assert client.install_candidate_bundle(str(bundle_dir)) is None
+
+    installed = client.install_candidate_bundle(
+        str(bundle_dir),
+        policy=SkillInstallPolicy(allow_challengers=True),
+    )
+
+    assert installed is not None
+    assert installed.name == "hidden-repo-surveyor"
+    assert installed.lifecycle_stage == SkillLifecycleStage.CHALLENGER
+    assert installed.trust_level == TrustLevel.PROBATION
+    assert installed.packaging_allowed is True
+    assert (install_root / "hidden-repo-surveyor" / "MINER_REPORT.md").exists()
 
 
 def test_local_skill_without_metadata_defaults_to_untrusted_draft(tmp_path: Path) -> None:

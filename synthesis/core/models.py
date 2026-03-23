@@ -94,6 +94,8 @@ class SkillSource(BaseModel):
     install_root: Optional[str] = None
     upstream: Optional[str] = None
     version: Optional[str] = None
+    commit: Optional[str] = None
+    fingerprint: Optional[str] = None
 
 
 class SkillRecord(BaseModel):
@@ -109,10 +111,18 @@ class SkillRecord(BaseModel):
     capability_family: Optional[str] = None
     is_primary: bool = False
     variant_of: Optional[str] = None
+    variant_reason: Optional[str] = None
     supersedes: List[str] = Field(default_factory=list)
     submission_type: Optional[str] = None
     nearest_canonical: Optional[str] = None
     evidence_summary: Optional[str] = None
+    family_confidence: Optional[float] = None
+    disposition_confidence: Optional[float] = None
+    disposition_reason_codes: List[str] = Field(default_factory=list)
+    registry_snapshot_version: Optional[str] = None
+    license_status: Optional[str] = None
+    license_expression: Optional[str] = None
+    packaging_allowed: Optional[bool] = None
     relative_path: Optional[str] = None
     install_path: Optional[str] = None
     score: float = 0.0
@@ -127,6 +137,24 @@ class SkillCompositionBundle(BaseModel):
     missing_tokens: List[str] = Field(default_factory=list)
 
 
+class SkillInstallPolicy(BaseModel):
+    """Local acceptance rules for installing a skill package."""
+
+    allow_drafts: bool = False
+    allow_challengers: bool = False
+    allow_canonical: bool = True
+    require_packaging_allowed: bool = True
+
+
+class CandidateBundleValidation(BaseModel):
+    """Validation result for a miner-produced challenger bundle."""
+
+    valid: bool
+    errors: List[str] = Field(default_factory=list)
+    warnings: List[str] = Field(default_factory=list)
+    skill: Optional["SkillRecord"] = None
+
+
 class SkillSubmission(BaseModel):
     """PR-ready submission metadata for a synthesized or curated skill."""
 
@@ -139,8 +167,16 @@ class SkillSubmission(BaseModel):
     lifecycle_stage: SkillLifecycleStage = Field(default=SkillLifecycleStage.CHALLENGER)
     capability_family: Optional[str] = None
     submission_type: str = "new_family_candidate"
+    variant_reason: Optional[str] = None
     nearest_canonical: Optional[str] = None
     evidence_summary: Optional[str] = None
+    family_confidence: Optional[float] = None
+    disposition_confidence: Optional[float] = None
+    disposition_reason_codes: List[str] = Field(default_factory=list)
+    registry_snapshot_version: Optional[str] = None
+    license_status: Optional[str] = None
+    license_expression: Optional[str] = None
+    packaging_allowed: Optional[bool] = None
     files: Dict[str, str] = Field(default_factory=dict)
     binary_files: Dict[str, str] = Field(default_factory=dict)
 
