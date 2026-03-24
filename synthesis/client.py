@@ -502,22 +502,42 @@ class SynthesisClient:
         use_temp_worktree: bool = False,
         worktree_root: Optional[str] = None,
         allow_existing_target: bool = False,
-    ) -> Optional[SubmissionAutomationResult]:
+    ) -> SubmissionAutomationResult:
         """Publish a prepared candidate envelope into the canonical registry checkout."""
         if not self.canonical_repository:
-            return None
+            return self._submission_failure(
+                "canonical_repository_unavailable",
+                ["Canonical repository is not configured."],
+            )
 
         envelope = self.prepare_candidate_bundle_submission(bundle_path)
         if not envelope:
-            return None
+            validation = self.validate_candidate_bundle(bundle_path)
+            details = validation.errors or ["Candidate bundle could not be prepared."]
+            return self._submission_failure(
+                "invalid_candidate_bundle",
+                details,
+            )
 
         repo_root = self.canonical_repository.root
         if not (repo_root / ".git").exists():
-            return None
+            return self._submission_failure(
+                "canonical_repository_not_git",
+                ["Canonical repository checkout does not contain a .git directory."],
+                envelope=envelope,
+                branch=envelope.submission.branch,
+                target_repo_root=str(repo_root),
+            )
 
         git_executable = shutil.which("git")
         if not git_executable:
-            return None
+            return self._submission_failure(
+                "git_unavailable",
+                ["Git executable is not available in PATH."],
+                envelope=envelope,
+                branch=envelope.submission.branch,
+                target_repo_root=str(repo_root),
+            )
 
         warnings: List[str] = []
         target_repo_root = repo_root
@@ -544,20 +564,36 @@ class SynthesisClient:
                 cwd=repo_root,
             )
             if status.strip():
-                return None
+                return self._submission_failure(
+                    "dirty_checkout",
+                    ["Canonical repository checkout has uncommitted changes."],
+                    envelope=envelope,
+                    branch=envelope.submission.branch,
+                    target_repo_root=str(repo_root),
+                )
 
+        result: Optional[SubmissionAutomationResult] = None
         try:
             self._run_command(
                 [git_executable, "checkout", "-B", envelope.submission.branch],
                 cwd=target_repo_root,
             )
 
-            if not self._passes_publish_preflight(
+            failure_reason, failure_details = self._evaluate_publish_preflight(
                 envelope,
                 target_repo_root=target_repo_root,
                 allow_existing_target=allow_existing_target,
-            ):
-                return None
+            )
+            if failure_reason:
+                result = self._submission_failure(
+                    failure_reason,
+                    failure_details,
+                    envelope=envelope,
+                    branch=envelope.submission.branch,
+                    target_repo_root=str(target_repo_root),
+                    used_temp_worktree=use_temp_worktree,
+                )
+                return result
 
             target_dir = target_repo_root / envelope.submission.target_path
             if target_dir.exists():
@@ -627,7 +663,7 @@ class SynthesisClient:
                         cwd=target_repo_root,
                     ).strip() or None
 
-            return SubmissionAutomationResult(
+            result = SubmissionAutomationResult(
                 success=True,
                 branch=envelope.submission.branch,
                 target_repo_root=str(target_repo_root),
@@ -637,6 +673,7 @@ class SynthesisClient:
                 envelope=envelope,
                 warnings=warnings,
             )
+            return result
         finally:
             if temp_worktree_root is not None:
                 try:
@@ -645,9 +682,9 @@ class SynthesisClient:
                         cwd=repo_root,
                     )
                 except subprocess.CalledProcessError:
-                    warnings.append(
-                        f"Failed to remove temporary worktree at {temp_worktree_root}."
-                    )
+                    message = f"Failed to remove temporary worktree at {temp_worktree_root}."
+                    if result is not None:
+                        result.warnings.append(message)
 
     def validate_candidate_bundle(self, bundle_path: str) -> CandidateBundleValidation:
         """Validate a miner-produced challenger bundle before install or submission."""
@@ -992,18 +1029,21 @@ class SynthesisClient:
         )
         return completed.stdout.strip()
 
-    def _passes_publish_preflight(
+    def _evaluate_publish_preflight(
         self,
         envelope: CandidateBundleSubmissionEnvelope,
         *,
         target_repo_root: Path,
         allow_existing_target: bool,
-    ) -> bool:
+    ) -> tuple[Optional[str], List[str]]:
         """Check live registry collisions and staleness before publishing."""
         submission = envelope.submission
         target_dir = target_repo_root / submission.target_path
         if target_dir.exists() and any(target_dir.iterdir()) and not allow_existing_target:
-            return False
+            return (
+                "existing_target",
+                [f"Target path '{submission.target_path}' already exists in the canonical checkout."],
+            )
 
         live_snapshot = self._live_registry_snapshot_version()
         if (
@@ -1011,7 +1051,12 @@ class SynthesisClient:
             and live_snapshot
             and submission.registry_snapshot_version != live_snapshot
         ):
-            return False
+            return (
+                "stale_registry_snapshot",
+                [
+                    f"Candidate snapshot '{submission.registry_snapshot_version}' does not match live snapshot '{live_snapshot}'."
+                ],
+            )
 
         live_skills = self._live_registry_skills()
         live_names = {skill.name for skill in live_skills}
@@ -1019,12 +1064,22 @@ class SynthesisClient:
 
         if submission.submission_type == "new_family_candidate":
             if submission.capability_family in live_families:
-                return False
+                return (
+                    "capability_family_conflict",
+                    [
+                        f"Capability family '{submission.capability_family}' already exists in the live registry."
+                    ],
+                )
         else:
             if not submission.nearest_canonical or submission.nearest_canonical not in live_names:
-                return False
+                return (
+                    "missing_nearest_canonical",
+                    [
+                        f"Nearest canonical '{submission.nearest_canonical or 'unknown'}' is not present in the live registry."
+                    ],
+                )
 
-        return True
+        return None, []
 
     def _live_registry_skills(self) -> List[SkillRecord]:
         """Return the current canonical registry catalog, if available."""
@@ -1051,6 +1106,29 @@ class SynthesisClient:
             return None
         text = str(snapshot_version).strip()
         return text or None
+
+    def _submission_failure(
+        self,
+        reason: str,
+        details: List[str],
+        *,
+        envelope: Optional[CandidateBundleSubmissionEnvelope] = None,
+        branch: Optional[str] = None,
+        target_repo_root: Optional[str] = None,
+        used_temp_worktree: bool = False,
+        warnings: Optional[List[str]] = None,
+    ) -> SubmissionAutomationResult:
+        """Build a structured failure result for publication automation."""
+        return SubmissionAutomationResult(
+            success=False,
+            branch=branch,
+            target_repo_root=target_repo_root,
+            used_temp_worktree=used_temp_worktree,
+            envelope=envelope,
+            failure_reason=reason,
+            failure_details=details,
+            warnings=warnings or [],
+        )
 
     def _get_llm_provider(self) -> LLMProvider:
         """Create the provider only when synthesis needs it."""

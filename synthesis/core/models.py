@@ -252,12 +252,14 @@ class SubmissionAutomationResult(BaseModel):
     """Result of publishing a candidate submission envelope into the registry workflow."""
 
     success: bool
-    branch: str
-    target_repo_root: str
+    branch: Optional[str] = None
+    target_repo_root: Optional[str] = None
     used_temp_worktree: bool = False
     commit_sha: Optional[str] = None
     pull_request_url: Optional[str] = None
-    envelope: CandidateBundleSubmissionEnvelope
+    envelope: Optional[CandidateBundleSubmissionEnvelope] = None
+    failure_reason: Optional[str] = None
+    failure_details: List[str] = Field(default_factory=list)
     warnings: List[str] = Field(default_factory=list)
 
 

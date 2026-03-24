@@ -865,7 +865,9 @@ def test_publish_candidate_bundle_submission_blocks_dirty_checkout(
 
     result = client.publish_candidate_bundle_submission(str(bundle_dir))
 
-    assert result is None
+    assert result is not None
+    assert result.success is False
+    assert result.failure_reason == "dirty_checkout"
     assert any(command[-2:] == ["status", "--porcelain"] for command in commands)
     assert not any(command[:2] == ["git", "commit"] for command in commands)
 
@@ -1017,7 +1019,9 @@ def test_publish_candidate_bundle_submission_blocks_existing_target_without_over
 
     result = client.publish_candidate_bundle_submission(str(bundle_dir))
 
-    assert result is None
+    assert result is not None
+    assert result.success is False
+    assert result.failure_reason == "existing_target"
 
 
 def test_publish_candidate_bundle_submission_blocks_stale_registry_snapshot(
@@ -1044,7 +1048,9 @@ def test_publish_candidate_bundle_submission_blocks_stale_registry_snapshot(
 
     result = client.publish_candidate_bundle_submission(str(bundle_dir))
 
-    assert result is None
+    assert result is not None
+    assert result.success is False
+    assert result.failure_reason == "stale_registry_snapshot"
 
 
 def test_publish_candidate_bundle_submission_blocks_new_family_conflict(
@@ -1088,7 +1094,38 @@ def test_publish_candidate_bundle_submission_blocks_new_family_conflict(
 
     result = client.publish_candidate_bundle_submission(str(bundle_dir))
 
-    assert result is None
+    assert result is not None
+    assert result.success is False
+    assert result.failure_reason == "capability_family_conflict"
+
+
+def test_publish_candidate_bundle_submission_reports_missing_nearest_canonical(
+    skill_roots: tuple[Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    canonical_root, install_root = skill_roots
+    _write_catalog(canonical_root, [], snapshot_version="snapshot-2026-03-23")
+    (canonical_root / ".git").mkdir()
+    bundle_dir = _write_candidate_bundle(
+        canonical_root / "candidate-bundles",
+        name="missing-nearest",
+        description="Use when nearest canonical should be enforced against the live registry.",
+    )
+
+    monkeypatch.setattr("shutil.which", lambda name: name)
+
+    client = SynthesisClient(
+        provider_type="mock",
+        canonical_repo_path=str(canonical_root),
+        host_root=str(install_root),
+    )
+    monkeypatch.setattr(client, "_run_command", lambda *args, **kwargs: "")
+
+    result = client.publish_candidate_bundle_submission(str(bundle_dir))
+
+    assert result is not None
+    assert result.success is False
+    assert result.failure_reason == "missing_nearest_canonical"
 
 
 def test_inspect_candidate_bundle_directory_builds_review_queue(
