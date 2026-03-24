@@ -38,13 +38,18 @@ def _write_skill(repo_root: Path, name: str, description: str, keywords: list[st
     (skill_dir / "SKILL.md").write_text(skill_text, encoding="utf-8")
 
 
-def _write_catalog(repo_root: Path, entries: list[dict]) -> None:
+def _write_catalog(
+    repo_root: Path,
+    entries: list[dict],
+    *,
+    snapshot_version: str | None = None,
+) -> None:
     catalog_dir = repo_root / "catalog"
     catalog_dir.mkdir(parents=True, exist_ok=True)
-    (catalog_dir / "skills.json").write_text(
-        json.dumps({"skills": entries}, indent=2),
-        encoding="utf-8",
-    )
+    payload: dict[str, object] = {"skills": entries}
+    if snapshot_version is not None:
+        payload["snapshot_version"] = snapshot_version
+    (catalog_dir / "skills.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
 def _write_local_skill(install_root: Path, name: str, description: str) -> None:
@@ -148,6 +153,24 @@ def _write_candidate_bundle(bundle_root: Path, name: str, description: str) -> P
     asset.parent.mkdir(parents=True, exist_ok=True)
     asset.write_bytes(b"\x00candidate-binary")
     return bundle_dir
+
+
+def _repo_surveyor_catalog_entry() -> dict:
+    return {
+        "name": "repo-surveyor",
+        "description": "Canonical repo survey skill.",
+        "keywords": ["repo", "survey"],
+        "relative_path": "skills/repo-surveyor",
+        "trust_level": "trusted",
+        "source_type": "canonical",
+        "repo": DEFAULT_CANONICAL_REPO_SLUG,
+        "governance": {
+            "capability_family": "repo-surveyor",
+            "lifecycle_stage": "canonical",
+            "trust_level": "trusted",
+            "is_primary": True,
+        },
+    }
 
 
 @pytest.fixture
@@ -422,6 +445,7 @@ async def test_mcp_server_exposes_skill_management_tools(
         "inspect_skill",
         "inspect_candidate_bundle",
         "inspect_candidate_bundle_detail",
+        "inspect_candidate_bundle_directory",
         "inspect_candidate_bundle_review",
         "install_candidate_bundle",
         "list_installed_skills",
@@ -463,6 +487,15 @@ async def test_mcp_server_exposes_skill_management_tools(
     assert review_payload["ready_for_review"] is True
     assert review_payload["submission_type"] == "variant_candidate"
     assert review_payload["headline"] == "Variant candidate for repo-surveyor"
+
+    directory_response = await server.call_tool(
+        "inspect_candidate_bundle_directory",
+        {"path": str(canonical_root / "candidate-bundles")},
+    )
+    directory_payload = json.loads(directory_response)
+
+    assert directory_payload["total_candidates"] == 1
+    assert directory_payload["ready_candidates"] == 1
 
     envelope_response = await server.call_tool(
         "prepare_candidate_bundle_submission",
@@ -701,7 +734,17 @@ def test_publish_candidate_bundle_submission_writes_files_and_runs_git(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     canonical_root, install_root = skill_roots
-    _write_catalog(canonical_root, [])
+    _write_skill(
+        canonical_root,
+        name="repo-surveyor",
+        description="Canonical repo survey skill.",
+        keywords=["repo", "survey"],
+    )
+    _write_catalog(
+        canonical_root,
+        [_repo_surveyor_catalog_entry()],
+        snapshot_version="snapshot-2026-03-23",
+    )
     (canonical_root / ".git").mkdir()
     bundle_dir = _write_candidate_bundle(
         canonical_root / "candidate-bundles",
@@ -744,7 +787,17 @@ def test_publish_candidate_bundle_submission_can_open_pull_request(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     canonical_root, install_root = skill_roots
-    _write_catalog(canonical_root, [])
+    _write_skill(
+        canonical_root,
+        name="repo-surveyor",
+        description="Canonical repo survey skill.",
+        keywords=["repo", "survey"],
+    )
+    _write_catalog(
+        canonical_root,
+        [_repo_surveyor_catalog_entry()],
+        snapshot_version="snapshot-2026-03-23",
+    )
     (canonical_root / ".git").mkdir()
     bundle_dir = _write_candidate_bundle(
         canonical_root / "candidate-bundles",
@@ -822,7 +875,17 @@ def test_publish_candidate_bundle_submission_can_use_temp_worktree(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     canonical_root, install_root = skill_roots
-    _write_catalog(canonical_root, [])
+    _write_skill(
+        canonical_root,
+        name="repo-surveyor",
+        description="Canonical repo survey skill.",
+        keywords=["repo", "survey"],
+    )
+    _write_catalog(
+        canonical_root,
+        [_repo_surveyor_catalog_entry()],
+        snapshot_version="snapshot-2026-03-23",
+    )
     (canonical_root / ".git").mkdir()
     bundle_dir = _write_candidate_bundle(
         canonical_root / "candidate-bundles",
@@ -875,7 +938,17 @@ def test_publish_candidate_bundle_submission_can_set_pr_metadata(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     canonical_root, install_root = skill_roots
-    _write_catalog(canonical_root, [])
+    _write_skill(
+        canonical_root,
+        name="repo-surveyor",
+        description="Canonical repo survey skill.",
+        keywords=["repo", "survey"],
+    )
+    _write_catalog(
+        canonical_root,
+        [_repo_surveyor_catalog_entry()],
+        snapshot_version="snapshot-2026-03-23",
+    )
     (canonical_root / ".git").mkdir()
     bundle_dir = _write_candidate_bundle(
         canonical_root / "candidate-bundles",
@@ -915,6 +988,145 @@ def test_publish_candidate_bundle_submission_can_set_pr_metadata(
     assert "--draft" in pr_command
     assert pr_command.count("--label") == 2
     assert "--reviewer" in pr_command
+
+
+def test_publish_candidate_bundle_submission_blocks_existing_target_without_override(
+    skill_roots: tuple[Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    canonical_root, install_root = skill_roots
+    _write_catalog(canonical_root, [])
+    (canonical_root / ".git").mkdir()
+    existing_dir = canonical_root / "skills" / "publish-bundle"
+    existing_dir.mkdir(parents=True, exist_ok=True)
+    (existing_dir / "SKILL.md").write_text("# existing", encoding="utf-8")
+    bundle_dir = _write_candidate_bundle(
+        canonical_root / "candidate-bundles",
+        name="publish-bundle",
+        description="Use when a colliding target should be blocked before publish.",
+    )
+
+    monkeypatch.setattr("shutil.which", lambda name: name)
+
+    client = SynthesisClient(
+        provider_type="mock",
+        canonical_repo_path=str(canonical_root),
+        host_root=str(install_root),
+    )
+    monkeypatch.setattr(client, "_run_command", lambda *args, **kwargs: "")
+
+    result = client.publish_candidate_bundle_submission(str(bundle_dir))
+
+    assert result is None
+
+
+def test_publish_candidate_bundle_submission_blocks_stale_registry_snapshot(
+    skill_roots: tuple[Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    canonical_root, install_root = skill_roots
+    _write_catalog(canonical_root, [], snapshot_version="snapshot-2026-03-24")
+    (canonical_root / ".git").mkdir()
+    bundle_dir = _write_candidate_bundle(
+        canonical_root / "candidate-bundles",
+        name="stale-bundle",
+        description="Use when stale canon judgments should block publication.",
+    )
+
+    monkeypatch.setattr("shutil.which", lambda name: name)
+
+    client = SynthesisClient(
+        provider_type="mock",
+        canonical_repo_path=str(canonical_root),
+        host_root=str(install_root),
+    )
+    monkeypatch.setattr(client, "_run_command", lambda *args, **kwargs: "")
+
+    result = client.publish_candidate_bundle_submission(str(bundle_dir))
+
+    assert result is None
+
+
+def test_publish_candidate_bundle_submission_blocks_new_family_conflict(
+    skill_roots: tuple[Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    canonical_root, install_root = skill_roots
+    _write_skill(
+        canonical_root,
+        name="repo-surveyor",
+        description="Canonical repo survey skill.",
+        keywords=["repo", "survey"],
+    )
+    _write_catalog(
+        canonical_root,
+        [
+                _repo_surveyor_catalog_entry()
+            ],
+            snapshot_version="snapshot-2026-03-23",
+        )
+    (canonical_root / ".git").mkdir()
+    bundle_dir = _write_candidate_bundle(
+        canonical_root / "candidate-bundles",
+        name="new-repo-surveyor",
+        description="Use when pretending a known family is brand new.",
+    )
+    registry_path = bundle_dir / "REGISTRY.json"
+    payload = json.loads(registry_path.read_text(encoding="utf-8"))
+    payload["submission_type"] = "new_family_candidate"
+    payload["nearest_canonical"] = None
+    registry_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+    monkeypatch.setattr("shutil.which", lambda name: name)
+
+    client = SynthesisClient(
+        provider_type="mock",
+        canonical_repo_path=str(canonical_root),
+        host_root=str(install_root),
+    )
+    monkeypatch.setattr(client, "_run_command", lambda *args, **kwargs: "")
+
+    result = client.publish_candidate_bundle_submission(str(bundle_dir))
+
+    assert result is None
+
+
+def test_inspect_candidate_bundle_directory_builds_review_queue(
+    skill_roots: tuple[Path, Path],
+) -> None:
+    canonical_root, install_root = skill_roots
+    _write_catalog(canonical_root, [])
+    bundles_root = canonical_root / "candidate-bundles"
+    _write_candidate_bundle(
+        bundles_root,
+        name="ready-bundle",
+        description="Use when the bundle should be review-ready.",
+    )
+    blocked_bundle = _write_candidate_bundle(
+        bundles_root,
+        name="blocked-bundle",
+        description="Use when the bundle should be blocked.",
+    )
+    registry_path = blocked_bundle / "REGISTRY.json"
+    payload = json.loads(registry_path.read_text(encoding="utf-8"))
+    payload["nearest_canonical"] = None
+    registry_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+    client = SynthesisClient(
+        provider_type="mock",
+        canonical_repo_path=str(canonical_root),
+        host_root=str(install_root),
+    )
+
+    queue = client.inspect_candidate_bundle_directory(str(bundles_root))
+
+    assert queue is not None
+    assert queue.total_candidates == 2
+    assert queue.ready_candidates == 1
+    assert queue.blocked_candidates == 1
+    assert queue.candidates[0].ready_for_review is True
+    assert queue.candidates[1].ready_for_review is False
+    assert queue.candidates[1].validation_errors
 
 
 def test_validate_candidate_bundle_rejects_missing_variant_context(

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import json
 import shutil
 import subprocess
 import tempfile
@@ -16,6 +17,8 @@ from typing import Any, Dict, List, Optional
 from synthesis.core.models import (
     CandidateBundleInspection,
     CandidateBundleReview,
+    CandidateBundleReviewQueue,
+    CandidateBundleReviewQueueItem,
     CandidateBundleSubmissionEnvelope,
     CandidateBundleValidation,
     CapabilityCategory,
@@ -435,6 +438,38 @@ class SynthesisClient:
             miner_report_excerpt=report_excerpt,
         )
 
+    def inspect_candidate_bundle_directory(
+        self,
+        bundles_root: str,
+    ) -> Optional[CandidateBundleReviewQueue]:
+        """Build a curator-facing review queue from a directory of candidate bundles."""
+        root = Path(bundles_root).expanduser()
+        if not root.is_dir():
+            return None
+
+        items: List[CandidateBundleReviewQueueItem] = []
+        for bundle_dir in sorted(path for path in root.iterdir() if path.is_dir()):
+            review = self.inspect_candidate_bundle_review(str(bundle_dir))
+            if not review:
+                continue
+            items.append(
+                CandidateBundleReviewQueueItem(
+                    bundle_path=str(bundle_dir),
+                    review=review,
+                )
+            )
+
+        items.sort(key=lambda item: (not item.review.ready_for_review, item.review.skill_name))
+        ready_candidates = sum(1 for item in items if item.review.ready_for_review)
+        total_candidates = len(items)
+        return CandidateBundleReviewQueue(
+            root_path=str(root),
+            total_candidates=total_candidates,
+            ready_candidates=ready_candidates,
+            blocked_candidates=total_candidates - ready_candidates,
+            candidates=items,
+        )
+
     def prepare_candidate_bundle_submission(
         self,
         bundle_path: str,
@@ -466,6 +501,7 @@ class SynthesisClient:
         reviewers: Optional[List[str]] = None,
         use_temp_worktree: bool = False,
         worktree_root: Optional[str] = None,
+        allow_existing_target: bool = False,
     ) -> Optional[SubmissionAutomationResult]:
         """Publish a prepared candidate envelope into the canonical registry checkout."""
         if not self.canonical_repository:
@@ -515,6 +551,13 @@ class SynthesisClient:
                 [git_executable, "checkout", "-B", envelope.submission.branch],
                 cwd=target_repo_root,
             )
+
+            if not self._passes_publish_preflight(
+                envelope,
+                target_repo_root=target_repo_root,
+                allow_existing_target=allow_existing_target,
+            ):
+                return None
 
             target_dir = target_repo_root / envelope.submission.target_path
             if target_dir.exists():
@@ -948,6 +991,66 @@ class SynthesisClient:
             text=True,
         )
         return completed.stdout.strip()
+
+    def _passes_publish_preflight(
+        self,
+        envelope: CandidateBundleSubmissionEnvelope,
+        *,
+        target_repo_root: Path,
+        allow_existing_target: bool,
+    ) -> bool:
+        """Check live registry collisions and staleness before publishing."""
+        submission = envelope.submission
+        target_dir = target_repo_root / submission.target_path
+        if target_dir.exists() and any(target_dir.iterdir()) and not allow_existing_target:
+            return False
+
+        live_snapshot = self._live_registry_snapshot_version()
+        if (
+            submission.registry_snapshot_version
+            and live_snapshot
+            and submission.registry_snapshot_version != live_snapshot
+        ):
+            return False
+
+        live_skills = self._live_registry_skills()
+        live_names = {skill.name for skill in live_skills}
+        live_families = {skill.capability_family for skill in live_skills if skill.capability_family}
+
+        if submission.submission_type == "new_family_candidate":
+            if submission.capability_family in live_families:
+                return False
+        else:
+            if not submission.nearest_canonical or submission.nearest_canonical not in live_names:
+                return False
+
+        return True
+
+    def _live_registry_skills(self) -> List[SkillRecord]:
+        """Return the current canonical registry catalog, if available."""
+        if not self.canonical_repository:
+            return []
+        if not self.canonical_repository.is_available() and not self.canonical_repository.ensure_local_checkout():
+            return []
+        return self.canonical_repository.list_skills()
+
+    def _live_registry_snapshot_version(self) -> Optional[str]:
+        """Return the current catalog snapshot version when available."""
+        if not self.canonical_repository or not self.canonical_repository.catalog_path.exists():
+            return None
+        try:
+            payload = json.loads(
+                self.canonical_repository.catalog_path.read_text(encoding="utf-8")
+            )
+        except (OSError, json.JSONDecodeError):
+            return None
+        if not isinstance(payload, dict):
+            return None
+        snapshot_version = payload.get("snapshot_version")
+        if snapshot_version is None:
+            return None
+        text = str(snapshot_version).strip()
+        return text or None
 
     def _get_llm_provider(self) -> LLMProvider:
         """Create the provider only when synthesis needs it."""

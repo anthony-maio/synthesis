@@ -185,6 +185,33 @@ class CandidateBundleReview(BaseModel):
     miner_report_excerpt: Optional[str] = None
 
 
+class CandidateBundleReviewQueueItem(BaseModel):
+    """One harvested candidate bundle in a reviewer queue."""
+
+    bundle_path: str
+    review: CandidateBundleReview
+
+    @property
+    def ready_for_review(self) -> bool:
+        """Expose review readiness directly for queue sorting and display."""
+        return self.review.ready_for_review
+
+    @property
+    def validation_errors(self) -> List[str]:
+        """Expose validation errors directly for queue display."""
+        return self.review.validation_errors
+
+
+class CandidateBundleReviewQueue(BaseModel):
+    """Reviewer queue for a directory of harvested candidate bundles."""
+
+    root_path: str
+    total_candidates: int
+    ready_candidates: int
+    blocked_candidates: int
+    candidates: List[CandidateBundleReviewQueueItem] = Field(default_factory=list)
+
+
 class SkillSubmission(BaseModel):
     """PR-ready submission metadata for a synthesized or curated skill."""
 
