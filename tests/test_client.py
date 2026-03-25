@@ -490,6 +490,7 @@ async def test_mcp_server_exposes_skill_management_tools(
 
     assert detail_payload["skill"]["name"] == "review-bundle"
     assert detail_payload["validation"]["valid"] is True
+    assert detail_payload["publishability"]["publishable"] is True
     assert "Nearest canonical: repo-surveyor" in detail_payload["miner_report"]
 
     review_response = await server.call_tool(
@@ -500,6 +501,7 @@ async def test_mcp_server_exposes_skill_management_tools(
 
     assert review_payload["skill_name"] == "review-bundle"
     assert review_payload["ready_for_review"] is True
+    assert review_payload["publishability"]["publishable"] is True
     assert review_payload["submission_type"] == "variant_candidate"
     assert review_payload["headline"] == "Variant candidate for repo-surveyor"
 
@@ -592,6 +594,8 @@ def test_inspect_candidate_bundle_detail_includes_validation_and_report(
     assert detail is not None
     assert detail.skill.name == "hidden-repo-surveyor"
     assert detail.validation.valid is True
+    assert detail.publishability.publishable is False
+    assert detail.publishability.blocked_reason == "missing_nearest_canonical"
     assert detail.miner_report is not None
     assert "Nearest canonical: repo-surveyor" in detail.miner_report
     assert detail.provenance["source_commit"] == "abc123def"
@@ -604,7 +608,17 @@ def test_inspect_candidate_bundle_review_summarizes_curator_decision_surface(
     skill_roots: tuple[Path, Path],
 ) -> None:
     canonical_root, install_root = skill_roots
-    _write_catalog(canonical_root, [])
+    _write_skill(
+        canonical_root,
+        name="repo-surveyor",
+        description="Canonical repo survey skill.",
+        keywords=["repo", "survey"],
+    )
+    _write_catalog(
+        canonical_root,
+        [_repo_surveyor_catalog_entry()],
+        snapshot_version="snapshot-2026-03-23",
+    )
     bundle_dir = _write_candidate_bundle(
         canonical_root / "candidate-bundles",
         name="hidden-repo-surveyor",
@@ -622,6 +636,8 @@ def test_inspect_candidate_bundle_review_summarizes_curator_decision_surface(
     assert review is not None
     assert review.skill_name == "hidden-repo-surveyor"
     assert review.ready_for_review is True
+    assert review.publishability.publishable is True
+    assert review.publishability.blocked_reason is None
     assert review.headline == "Variant candidate for repo-surveyor"
     assert review.validation_errors == []
     assert review.license_status == "permissive"
@@ -655,8 +671,45 @@ def test_inspect_candidate_bundle_review_surfaces_blockers(
 
     assert review is not None
     assert review.ready_for_review is False
+    assert review.publishability.publishable is False
+    assert review.publishability.blocked_reason == "invalid_candidate_bundle"
     assert any("nearest_canonical" in error for error in review.validation_errors)
     assert "Blocked" in review.headline
+
+
+def test_inspect_candidate_bundle_review_surfaces_publishability_blocker(
+    skill_roots: tuple[Path, Path],
+) -> None:
+    canonical_root, install_root = skill_roots
+    _write_skill(
+        canonical_root,
+        name="repo-surveyor",
+        description="Canonical repo survey skill.",
+        keywords=["repo", "survey"],
+    )
+    _write_catalog(
+        canonical_root,
+        [_repo_surveyor_catalog_entry()],
+        snapshot_version="snapshot-2026-03-24",
+    )
+    bundle_dir = _write_candidate_bundle(
+        canonical_root / "candidate-bundles",
+        name="stale-bundle",
+        description="Use when a stale bundle should still be reviewable but not publishable.",
+    )
+
+    client = SynthesisClient(
+        provider_type="mock",
+        canonical_repo_path=str(canonical_root),
+        host_root=str(install_root),
+    )
+
+    review = client.inspect_candidate_bundle_review(str(bundle_dir))
+
+    assert review is not None
+    assert review.ready_for_review is True
+    assert review.publishability.publishable is False
+    assert review.publishability.blocked_reason == "stale_registry_snapshot"
 
 
 def test_submit_candidate_bundle_prepares_submission_with_metadata(

@@ -379,6 +379,9 @@ class SynthesisClient:
         validation = self.validate_candidate_bundle(bundle_path)
         if validation.skill is None:
             return None
+        publishability = self.inspect_candidate_bundle_publishability(bundle_path)
+        if not publishability:
+            return None
         try:
             record, governance, provenance, text_files, binary_files = inspect_candidate_bundle_payload(
                 bundle_path,
@@ -389,6 +392,7 @@ class SynthesisClient:
         return CandidateBundleInspection(
             skill=record,
             validation=validation,
+            publishability=publishability,
             governance=governance,
             provenance=provenance,
             miner_report=text_files.get("MINER_REPORT.md"),
@@ -428,6 +432,7 @@ class SynthesisClient:
             skill_name=skill.name,
             headline=headline,
             ready_for_review=ready_for_review,
+            publishability=detail.publishability,
             submission_type=skill.submission_type,
             capability_family=skill.capability_family,
             nearest_canonical=skill.nearest_canonical,
@@ -452,16 +457,13 @@ class SynthesisClient:
         items: List[CandidateBundleReviewQueueItem] = []
         for bundle_dir in sorted(path for path in root.iterdir() if path.is_dir()):
             review = self.inspect_candidate_bundle_review(str(bundle_dir))
-            publishability = self.inspect_candidate_bundle_publishability(str(bundle_dir))
-            if not publishability:
-                continue
             if not review:
                 continue
             items.append(
                 CandidateBundleReviewQueueItem(
                     bundle_path=str(bundle_dir),
                     review=review,
-                    publishability=publishability,
+                    publishability=review.publishability,
                 )
             )
 
@@ -513,23 +515,24 @@ class SynthesisClient:
                 blocked_details=["Canonical repository is not configured."],
             )
 
-        envelope = self.prepare_candidate_bundle_submission(bundle_path)
-        if not envelope:
-            validation = self.validate_candidate_bundle(bundle_path)
-            if not validation.valid:
-                return CandidateBundlePublishability(
-                    publishable=False,
-                    blocked_reason="invalid_candidate_bundle",
-                    blocked_details=validation.errors,
-                )
+        validation = self.validate_candidate_bundle(bundle_path)
+        if not validation.valid:
+            return CandidateBundlePublishability(
+                publishable=False,
+                blocked_reason="invalid_candidate_bundle",
+                blocked_details=validation.errors,
+            )
+
+        submission = self.submit_candidate_bundle(bundle_path)
+        if not submission:
             return CandidateBundlePublishability(
                 publishable=False,
                 blocked_reason="submission_preparation_failed",
                 blocked_details=["Candidate bundle could not be prepared."],
             )
 
-        failure_reason, failure_details = self._evaluate_publish_preflight(
-            envelope,
+        failure_reason, failure_details = self._evaluate_submission_preflight(
+            submission,
             target_repo_root=self.canonical_repository.root,
             allow_existing_target=allow_existing_target,
         )
@@ -651,8 +654,8 @@ class SynthesisClient:
                 cwd=target_repo_root,
             )
 
-            failure_reason, failure_details = self._evaluate_publish_preflight(
-                envelope,
+            failure_reason, failure_details = self._evaluate_submission_preflight(
+                envelope.submission,
                 target_repo_root=target_repo_root,
                 allow_existing_target=allow_existing_target,
             )
@@ -1101,15 +1104,14 @@ class SynthesisClient:
         )
         return completed.stdout.strip()
 
-    def _evaluate_publish_preflight(
+    def _evaluate_submission_preflight(
         self,
-        envelope: CandidateBundleSubmissionEnvelope,
+        submission: SkillSubmission,
         *,
         target_repo_root: Path,
         allow_existing_target: bool,
     ) -> tuple[Optional[str], List[str]]:
         """Check live registry collisions and staleness before publishing."""
-        submission = envelope.submission
         target_dir = target_repo_root / submission.target_path
         if target_dir.exists() and any(target_dir.iterdir()) and not allow_existing_target:
             return (

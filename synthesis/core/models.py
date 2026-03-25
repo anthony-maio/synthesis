@@ -160,6 +160,7 @@ class CandidateBundleInspection(BaseModel):
 
     skill: SkillRecord
     validation: CandidateBundleValidation
+    publishability: "CandidateBundlePublishability"
     governance: Dict[str, Any] = Field(default_factory=dict)
     provenance: Dict[str, Any] = Field(default_factory=dict)
     miner_report: Optional[str] = None
@@ -173,6 +174,7 @@ class CandidateBundleReview(BaseModel):
     skill_name: str
     headline: str
     ready_for_review: bool
+    publishability: "CandidateBundlePublishability"
     submission_type: Optional[str] = None
     capability_family: Optional[str] = None
     nearest_canonical: Optional[str] = None
