@@ -185,11 +185,20 @@ class CandidateBundleReview(BaseModel):
     miner_report_excerpt: Optional[str] = None
 
 
+class CandidateBundlePublishability(BaseModel):
+    """Publishability assessment for a candidate bundle against the live registry."""
+
+    publishable: bool
+    blocked_reason: Optional[str] = None
+    blocked_details: List[str] = Field(default_factory=list)
+
+
 class CandidateBundleReviewQueueItem(BaseModel):
     """One harvested candidate bundle in a reviewer queue."""
 
     bundle_path: str
     review: CandidateBundleReview
+    publishability: CandidateBundlePublishability
 
     @property
     def ready_for_review(self) -> bool:
@@ -200,6 +209,16 @@ class CandidateBundleReviewQueueItem(BaseModel):
     def validation_errors(self) -> List[str]:
         """Expose validation errors directly for queue display."""
         return self.review.validation_errors
+
+    @property
+    def publishable(self) -> bool:
+        """Expose publishability directly for queue sorting and display."""
+        return self.publishability.publishable
+
+    @property
+    def blocked_reason(self) -> Optional[str]:
+        """Expose the first publishability blocker directly for queue display."""
+        return self.publishability.blocked_reason
 
 
 class CandidateBundleReviewQueue(BaseModel):

@@ -416,6 +416,12 @@ async def test_mcp_server_exposes_skill_management_tools(
         description="Draft release notes from recent code changes.",
         keywords=["release", "notes", "changes"],
     )
+    _write_skill(
+        canonical_root,
+        name="repo-surveyor",
+        description="Canonical repo survey skill.",
+        keywords=["repo", "survey"],
+    )
     _write_catalog(
         canonical_root,
         [
@@ -425,11 +431,13 @@ async def test_mcp_server_exposes_skill_management_tools(
                 "keywords": ["release", "notes", "changes"],
                 "relative_path": "skills/release-notes",
                 "trust_level": "trusted",
-                "source_type": "canonical",
-                "repo": "github.com/synthesis-ai/skills",
-            }
-        ],
-    )
+                    "source_type": "canonical",
+                    "repo": "github.com/synthesis-ai/skills",
+                },
+                _repo_surveyor_catalog_entry(),
+            ],
+            snapshot_version="snapshot-2026-03-23",
+        )
 
     client = SynthesisClient(
         provider_type="mock",
@@ -1132,7 +1140,17 @@ def test_inspect_candidate_bundle_directory_builds_review_queue(
     skill_roots: tuple[Path, Path],
 ) -> None:
     canonical_root, install_root = skill_roots
-    _write_catalog(canonical_root, [])
+    _write_skill(
+        canonical_root,
+        name="repo-surveyor",
+        description="Canonical repo survey skill.",
+        keywords=["repo", "survey"],
+    )
+    _write_catalog(
+        canonical_root,
+        [_repo_surveyor_catalog_entry()],
+        snapshot_version="snapshot-2026-03-23",
+    )
     bundles_root = canonical_root / "candidate-bundles"
     _write_candidate_bundle(
         bundles_root,
@@ -1162,8 +1180,51 @@ def test_inspect_candidate_bundle_directory_builds_review_queue(
     assert queue.ready_candidates == 1
     assert queue.blocked_candidates == 1
     assert queue.candidates[0].ready_for_review is True
+    assert queue.candidates[0].publishable is True
+    assert queue.candidates[0].blocked_reason is None
     assert queue.candidates[1].ready_for_review is False
+    assert queue.candidates[1].publishable is False
+    assert queue.candidates[1].blocked_reason == "invalid_candidate_bundle"
     assert queue.candidates[1].validation_errors
+
+
+def test_inspect_candidate_bundle_directory_surfaces_publishability_blockers(
+    skill_roots: tuple[Path, Path],
+) -> None:
+    canonical_root, install_root = skill_roots
+    _write_skill(
+        canonical_root,
+        name="repo-surveyor",
+        description="Canonical repo survey skill.",
+        keywords=["repo", "survey"],
+    )
+    _write_catalog(
+        canonical_root,
+        [_repo_surveyor_catalog_entry()],
+        snapshot_version="snapshot-2026-03-24",
+    )
+    bundles_root = canonical_root / "candidate-bundles"
+    _write_candidate_bundle(
+        bundles_root,
+        name="stale-bundle",
+        description="Use when a stale snapshot should block publishability in the queue.",
+    )
+
+    client = SynthesisClient(
+        provider_type="mock",
+        canonical_repo_path=str(canonical_root),
+        host_root=str(install_root),
+    )
+
+    queue = client.inspect_candidate_bundle_directory(str(bundles_root))
+
+    assert queue is not None
+    assert queue.total_candidates == 1
+    assert queue.ready_candidates == 0
+    assert queue.blocked_candidates == 1
+    assert queue.candidates[0].ready_for_review is True
+    assert queue.candidates[0].publishable is False
+    assert queue.candidates[0].blocked_reason == "stale_registry_snapshot"
 
 
 def test_validate_candidate_bundle_rejects_missing_variant_context(

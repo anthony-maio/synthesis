@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional
 
 from synthesis.core.models import (
     CandidateBundleInspection,
+    CandidateBundlePublishability,
     CandidateBundleReview,
     CandidateBundleReviewQueue,
     CandidateBundleReviewQueueItem,
@@ -450,17 +451,27 @@ class SynthesisClient:
         items: List[CandidateBundleReviewQueueItem] = []
         for bundle_dir in sorted(path for path in root.iterdir() if path.is_dir()):
             review = self.inspect_candidate_bundle_review(str(bundle_dir))
+            publishability = self.inspect_candidate_bundle_publishability(str(bundle_dir))
+            if not publishability:
+                continue
             if not review:
                 continue
             items.append(
                 CandidateBundleReviewQueueItem(
                     bundle_path=str(bundle_dir),
                     review=review,
+                    publishability=publishability,
                 )
             )
 
-        items.sort(key=lambda item: (not item.review.ready_for_review, item.review.skill_name))
-        ready_candidates = sum(1 for item in items if item.review.ready_for_review)
+        items.sort(
+            key=lambda item: (
+                not item.publishability.publishable,
+                not item.review.ready_for_review,
+                item.review.skill_name,
+            )
+        )
+        ready_candidates = sum(1 for item in items if item.publishability.publishable)
         total_candidates = len(items)
         return CandidateBundleReviewQueue(
             root_path=str(root),
@@ -469,6 +480,49 @@ class SynthesisClient:
             blocked_candidates=total_candidates - ready_candidates,
             candidates=items,
         )
+
+    def inspect_candidate_bundle_publishability(
+        self,
+        bundle_path: str,
+        *,
+        allow_existing_target: bool = False,
+    ) -> Optional[CandidateBundlePublishability]:
+        """Check whether a candidate bundle is publishable against the live registry."""
+        if not self.canonical_repository:
+            return CandidateBundlePublishability(
+                publishable=False,
+                blocked_reason="canonical_repository_unavailable",
+                blocked_details=["Canonical repository is not configured."],
+            )
+
+        envelope = self.prepare_candidate_bundle_submission(bundle_path)
+        if not envelope:
+            validation = self.validate_candidate_bundle(bundle_path)
+            if not validation.valid:
+                return CandidateBundlePublishability(
+                    publishable=False,
+                    blocked_reason="invalid_candidate_bundle",
+                    blocked_details=validation.errors,
+                )
+            return CandidateBundlePublishability(
+                publishable=False,
+                blocked_reason="submission_preparation_failed",
+                blocked_details=["Candidate bundle could not be prepared."],
+            )
+
+        failure_reason, failure_details = self._evaluate_publish_preflight(
+            envelope,
+            target_repo_root=self.canonical_repository.root,
+            allow_existing_target=allow_existing_target,
+        )
+        if failure_reason:
+            return CandidateBundlePublishability(
+                publishable=False,
+                blocked_reason=failure_reason,
+                blocked_details=failure_details,
+            )
+
+        return CandidateBundlePublishability(publishable=True)
 
     def prepare_candidate_bundle_submission(
         self,
