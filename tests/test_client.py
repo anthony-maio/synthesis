@@ -72,7 +72,13 @@ def _write_local_skill(install_root: Path, name: str, description: str) -> None:
     )
 
 
-def _write_candidate_bundle(bundle_root: Path, name: str, description: str) -> Path:
+def _write_candidate_bundle(
+    bundle_root: Path,
+    name: str,
+    description: str,
+    *,
+    registry_overrides: dict[str, object] | None = None,
+) -> Path:
     bundle_dir = bundle_root / name
     bundle_dir.mkdir(parents=True, exist_ok=True)
     (bundle_dir / "SKILL.md").write_text(
@@ -93,30 +99,30 @@ def _write_candidate_bundle(bundle_root: Path, name: str, description: str) -> P
         ),
         encoding="utf-8",
     )
+    registry_payload = {
+        "schema_version": "1",
+        "capability_family": "repo-surveyor",
+        "lifecycle_stage": "challenger",
+        "trust_level": "probation",
+        "is_primary": False,
+        "variant_of": None,
+        "supersedes": [],
+        "submission_type": "variant_candidate",
+        "nearest_canonical": "repo-surveyor",
+        "evidence_summary": "Preserves hidden-directory analysis from a mined workflow.",
+        "variant_reason": "distinct_workflow",
+        "family_confidence": 0.93,
+        "disposition_confidence": 0.84,
+        "disposition_reason_codes": [
+            "family_match_strong",
+            "variant_distinct_workflow",
+        ],
+        "registry_snapshot_version": "snapshot-2026-03-23",
+    }
+    if registry_overrides:
+        registry_payload.update(registry_overrides)
     (bundle_dir / "REGISTRY.json").write_text(
-        json.dumps(
-            {
-                "schema_version": "1",
-                "capability_family": "repo-surveyor",
-                "lifecycle_stage": "challenger",
-                "trust_level": "probation",
-                "is_primary": False,
-                "variant_of": None,
-                "supersedes": [],
-                "submission_type": "variant_candidate",
-                "nearest_canonical": "repo-surveyor",
-                "evidence_summary": "Preserves hidden-directory analysis from a mined workflow.",
-                "variant_reason": "distinct_workflow",
-                "family_confidence": 0.93,
-                "disposition_confidence": 0.84,
-                "disposition_reason_codes": [
-                    "family_match_strong",
-                    "variant_distinct_workflow",
-                ],
-                "registry_snapshot_version": "snapshot-2026-03-23",
-            },
-            indent=2,
-        ),
+        json.dumps(registry_payload, indent=2),
         encoding="utf-8",
     )
     (bundle_dir / "PROVENANCE.json").write_text(
@@ -454,6 +460,7 @@ async def test_mcp_server_exposes_skill_management_tools(
         "inspect_candidate_bundle",
         "inspect_candidate_bundle_detail",
         "inspect_candidate_bundle_directory",
+        "inspect_candidate_bundle_blockers",
         "inspect_candidate_bundle_review",
         "install_candidate_bundle",
         "list_installed_skills",
@@ -504,6 +511,16 @@ async def test_mcp_server_exposes_skill_management_tools(
 
     assert directory_payload["total_candidates"] == 1
     assert directory_payload["ready_candidates"] == 1
+
+    blockers_response = await server.call_tool(
+        "inspect_candidate_bundle_blockers",
+        {"path": str(canonical_root / "candidate-bundles")},
+    )
+    blockers_payload = json.loads(blockers_response)
+
+    assert blockers_payload["scanned_candidates"] == 1
+    assert blockers_payload["blocked_candidates"] == 0
+    assert blockers_payload["candidates"] == []
 
     envelope_response = await server.call_tool(
         "prepare_candidate_bundle_submission",
@@ -1225,6 +1242,51 @@ def test_inspect_candidate_bundle_directory_surfaces_publishability_blockers(
     assert queue.candidates[0].ready_for_review is True
     assert queue.candidates[0].publishable is False
     assert queue.candidates[0].blocked_reason == "stale_registry_snapshot"
+
+
+def test_inspect_candidate_bundle_blockers_returns_only_blocked_candidates(
+    skill_roots: tuple[Path, Path],
+) -> None:
+    canonical_root, install_root = skill_roots
+    _write_skill(
+        canonical_root,
+        name="repo-surveyor",
+        description="Canonical repo survey skill.",
+        keywords=["repo", "survey"],
+    )
+    _write_catalog(
+        canonical_root,
+        [_repo_surveyor_catalog_entry()],
+        snapshot_version="snapshot-2026-03-24",
+    )
+    bundles_root = canonical_root / "candidate-bundles"
+    _write_candidate_bundle(
+        bundles_root,
+        name="ready-bundle",
+        description="Use when a ready bundle should stay out of the blockers queue.",
+        registry_overrides={"registry_snapshot_version": "snapshot-2026-03-24"},
+    )
+    _write_candidate_bundle(
+        bundles_root,
+        name="stale-bundle",
+        description="Use when a stale bundle should appear in the blockers queue.",
+    )
+
+    client = SynthesisClient(
+        provider_type="mock",
+        canonical_repo_path=str(canonical_root),
+        host_root=str(install_root),
+    )
+
+    blockers = client.inspect_candidate_bundle_blockers(str(bundles_root))
+
+    assert blockers is not None
+    assert blockers.scanned_candidates == 2
+    assert blockers.blocked_candidates == 1
+    assert len(blockers.candidates) == 1
+    assert blockers.candidates[0].review.skill_name == "stale-bundle"
+    assert blockers.candidates[0].publishable is False
+    assert blockers.candidates[0].blocked_reason == "stale_registry_snapshot"
 
 
 def test_validate_candidate_bundle_rejects_missing_variant_context(

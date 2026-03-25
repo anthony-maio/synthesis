@@ -118,6 +118,7 @@ synthesis inspect-candidate-bundle ./candidate-bundle
 synthesis inspect-candidate-bundle-detail ./candidate-bundle
 synthesis inspect-candidate-bundle-review ./candidate-bundle
 synthesis inspect-candidate-bundle-directory ./extracted_skills
+synthesis inspect-candidate-bundle-blockers ./extracted_skills
 synthesis prepare-candidate-bundle-submission ./candidate-bundle
 synthesis publish-candidate-bundle-submission ./candidate-bundle --open-pull-request --draft-pull-request --label challenger --reviewer anthony-maio
 synthesis publish-candidate-bundle-submission ./candidate-bundle --use-temp-worktree --worktree-root ./tmp-worktrees

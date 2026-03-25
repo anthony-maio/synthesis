@@ -58,6 +58,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     inspect_bundle_directory.add_argument("path")
 
+    inspect_bundle_blockers = subparsers.add_parser(
+        "inspect-candidate-bundle-blockers",
+        help="Return only blocked challenger bundles from a directory review queue.",
+    )
+    inspect_bundle_blockers.add_argument("path")
+
     prepare_bundle_submission = subparsers.add_parser(
         "prepare-candidate-bundle-submission",
         help="Return a PR-ready submission envelope for a miner-produced challenger bundle.",
@@ -154,6 +160,14 @@ async def run_command(args: argparse.Namespace) -> Any:
         return (
             queue.model_dump()
             if queue
+            else {"success": False, "error": "candidate bundle directory not found or invalid"}
+        )
+
+    if args.command == "inspect-candidate-bundle-blockers":
+        blockers = client.inspect_candidate_bundle_blockers(args.path)
+        return (
+            blockers.model_dump()
+            if blockers
             else {"success": False, "error": "candidate bundle directory not found or invalid"}
         )
 

@@ -82,6 +82,15 @@ class SynthesisMCPServer:
                 },
             },
             {
+                "name": "inspect_candidate_bundle_blockers",
+                "description": "Return only blocked challenger bundles from a directory review queue.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {"path": {"type": "string"}},
+                    "required": ["path"],
+                },
+            },
+            {
                 "name": "prepare_candidate_bundle_submission",
                 "description": "Return a PR-ready submission envelope for a challenger bundle.",
                 "inputSchema": {
@@ -209,6 +218,18 @@ class SynthesisMCPServer:
                     }
                 )
             return json.dumps(queue.model_dump(), indent=2, default=str)
+
+        if name == "inspect_candidate_bundle_blockers":
+            bundles_root = str(arguments.get("path", ""))
+            blockers = self.client.inspect_candidate_bundle_blockers(bundles_root)
+            if not blockers:
+                return json.dumps(
+                    {
+                        "success": False,
+                        "error": f"Candidate bundle directory '{bundles_root}' not found",
+                    }
+                )
+            return json.dumps(blockers.model_dump(), indent=2, default=str)
 
         if name == "prepare_candidate_bundle_submission":
             bundle_path = str(arguments.get("path", ""))

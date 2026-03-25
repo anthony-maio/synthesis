@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from synthesis.core.models import (
+    CandidateBundleBlockerQueue,
     CandidateBundleInspection,
     CandidateBundlePublishability,
     CandidateBundleReview,
@@ -479,6 +480,23 @@ class SynthesisClient:
             ready_candidates=ready_candidates,
             blocked_candidates=total_candidates - ready_candidates,
             candidates=items,
+        )
+
+    def inspect_candidate_bundle_blockers(
+        self,
+        bundles_root: str,
+    ) -> Optional[CandidateBundleBlockerQueue]:
+        """Return only blocked candidate bundles from a harvested directory."""
+        queue = self.inspect_candidate_bundle_directory(bundles_root)
+        if not queue:
+            return None
+
+        blocked_items = [item for item in queue.candidates if not item.publishable]
+        return CandidateBundleBlockerQueue(
+            root_path=queue.root_path,
+            scanned_candidates=queue.total_candidates,
+            blocked_candidates=len(blocked_items),
+            candidates=blocked_items,
         )
 
     def inspect_candidate_bundle_publishability(

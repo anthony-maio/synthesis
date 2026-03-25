@@ -231,6 +231,15 @@ class CandidateBundleReviewQueue(BaseModel):
     candidates: List[CandidateBundleReviewQueueItem] = Field(default_factory=list)
 
 
+class CandidateBundleBlockerQueue(BaseModel):
+    """Blocked harvested candidates from one review queue scan."""
+
+    root_path: str
+    scanned_candidates: int
+    blocked_candidates: int
+    candidates: List[CandidateBundleReviewQueueItem] = Field(default_factory=list)
+
+
 class SkillSubmission(BaseModel):
     """PR-ready submission metadata for a synthesized or curated skill."""
 
