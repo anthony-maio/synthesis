@@ -74,6 +74,20 @@ def build_parser() -> argparse.ArgumentParser:
     )
     prepare_bundle_submission.add_argument("path")
 
+    publish_bundle_directory = subparsers.add_parser(
+        "publish-candidate-bundle-directory",
+        help="Publish every candidate in a directory selected by one queue action.",
+    )
+    publish_bundle_directory.add_argument("path")
+    publish_bundle_directory.add_argument("--action", choices=ACTION_CHOICES, default="ready_to_publish")
+    publish_bundle_directory.add_argument("--open-pull-request", action="store_true")
+    publish_bundle_directory.add_argument("--base-branch", default="main")
+    publish_bundle_directory.add_argument("--draft-pull-request", action="store_true")
+    publish_bundle_directory.add_argument("--label", action="append", default=[])
+    publish_bundle_directory.add_argument("--reviewer", action="append", default=[])
+    publish_bundle_directory.add_argument("--use-temp-worktree", action="store_true")
+    publish_bundle_directory.add_argument("--worktree-root")
+
     publish_bundle_submission = subparsers.add_parser(
         "publish-candidate-bundle-submission",
         help="Publish a candidate submission envelope into the canonical registry checkout.",
@@ -181,6 +195,24 @@ async def run_command(args: argparse.Namespace) -> Any:
             envelope.model_dump()
             if envelope
             else {"success": False, "error": "candidate bundle cannot be prepared"}
+        )
+
+    if args.command == "publish-candidate-bundle-directory":
+        batch = client.publish_candidate_bundle_directory(
+            args.path,
+            action=args.action,
+            open_pull_request=args.open_pull_request,
+            base_branch=args.base_branch,
+            draft_pull_request=args.draft_pull_request,
+            labels=args.label,
+            reviewers=args.reviewer,
+            use_temp_worktree=args.use_temp_worktree,
+            worktree_root=args.worktree_root,
+        )
+        return (
+            batch.model_dump()
+            if batch
+            else {"success": False, "error": "candidate bundle directory not found or invalid"}
         )
 
     if args.command == "publish-candidate-bundle-submission":

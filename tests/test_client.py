@@ -11,6 +11,7 @@ from synthesis import (
     SkillInstallPolicy,
     SkillInstallState,
     SkillLifecycleStage,
+    SubmissionAutomationResult,
     SynthesisClient,
     SynthesisMCPServer,
     TrustLevel,
@@ -465,6 +466,7 @@ async def test_mcp_server_exposes_skill_management_tools(
         "install_candidate_bundle",
         "list_installed_skills",
         "prepare_candidate_bundle_submission",
+        "publish_candidate_bundle_directory",
         "publish_candidate_bundle_submission",
         "validate_candidate_bundle",
         "submit_candidate_bundle",
@@ -1215,6 +1217,134 @@ def test_publish_candidate_bundle_submission_reports_missing_nearest_canonical(
     assert result is not None
     assert result.success is False
     assert result.failure_reason == "missing_nearest_canonical"
+
+
+def test_publish_candidate_bundle_directory_publishes_ready_candidates(
+    skill_roots: tuple[Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    canonical_root, install_root = skill_roots
+    _write_skill(
+        canonical_root,
+        name="repo-surveyor",
+        description="Canonical repo survey skill.",
+        keywords=["repo", "survey"],
+    )
+    _write_catalog(
+        canonical_root,
+        [_repo_surveyor_catalog_entry()],
+        snapshot_version="snapshot-2026-03-24",
+    )
+    bundles_root = canonical_root / "candidate-bundles"
+    ready_bundle = _write_candidate_bundle(
+        bundles_root,
+        name="ready-bundle",
+        description="Use when a ready bundle should be published in batch mode.",
+        registry_overrides={"registry_snapshot_version": "snapshot-2026-03-24"},
+    )
+    _write_candidate_bundle(
+        bundles_root,
+        name="stale-bundle",
+        description="Use when a stale bundle should be excluded by the ready filter.",
+    )
+
+    client = SynthesisClient(
+        provider_type="mock",
+        canonical_repo_path=str(canonical_root),
+        host_root=str(install_root),
+    )
+    published_paths: list[str] = []
+
+    def fake_publish(bundle_path: str, **kwargs: object) -> SubmissionAutomationResult:
+        published_paths.append(bundle_path)
+        assert kwargs["base_branch"] == "main"
+        return SubmissionAutomationResult(
+            success=True,
+            branch="synthesis/ready-bundle",
+            target_repo_root=str(canonical_root),
+        )
+
+    monkeypatch.setattr(client, "publish_candidate_bundle_submission", fake_publish)
+
+    batch = client.publish_candidate_bundle_directory(str(bundles_root))
+
+    assert batch is not None
+    assert batch.scanned_candidates == 2
+    assert batch.selected_candidates == 1
+    assert batch.published_candidates == 1
+    assert batch.failed_candidates == 0
+    assert batch.action_filter == "ready_to_publish"
+    assert batch.action_counts == {
+        "ready_to_publish": 1,
+        "refresh_against_live_canon": 1,
+    }
+    assert len(batch.results) == 1
+    assert batch.results[0].skill_name == "ready-bundle"
+    assert batch.results[0].result.success is True
+    assert published_paths == [str(ready_bundle)]
+
+
+def test_publish_candidate_bundle_directory_aggregates_failures(
+    skill_roots: tuple[Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    canonical_root, install_root = skill_roots
+    _write_skill(
+        canonical_root,
+        name="repo-surveyor",
+        description="Canonical repo survey skill.",
+        keywords=["repo", "survey"],
+    )
+    _write_catalog(
+        canonical_root,
+        [_repo_surveyor_catalog_entry()],
+        snapshot_version="snapshot-2026-03-24",
+    )
+    bundles_root = canonical_root / "candidate-bundles"
+    _write_candidate_bundle(
+        bundles_root,
+        name="ready-bundle-a",
+        description="Use when the first ready bundle should publish successfully.",
+        registry_overrides={"registry_snapshot_version": "snapshot-2026-03-24"},
+    )
+    second_bundle = _write_candidate_bundle(
+        bundles_root,
+        name="ready-bundle-b",
+        description="Use when the second ready bundle should fail publication.",
+        registry_overrides={"registry_snapshot_version": "snapshot-2026-03-24"},
+    )
+
+    client = SynthesisClient(
+        provider_type="mock",
+        canonical_repo_path=str(canonical_root),
+        host_root=str(install_root),
+    )
+
+    def fake_publish(bundle_path: str, **kwargs: object) -> SubmissionAutomationResult:
+        del kwargs
+        if Path(bundle_path) == second_bundle:
+            return SubmissionAutomationResult(
+                success=False,
+                failure_reason="dirty_checkout",
+                failure_details=["Canonical repository checkout has uncommitted changes."],
+            )
+        return SubmissionAutomationResult(
+            success=True,
+            branch=f"synthesis/{Path(bundle_path).name}",
+            target_repo_root=str(canonical_root),
+        )
+
+    monkeypatch.setattr(client, "publish_candidate_bundle_submission", fake_publish)
+
+    batch = client.publish_candidate_bundle_directory(str(bundles_root))
+
+    assert batch is not None
+    assert batch.selected_candidates == 2
+    assert batch.published_candidates == 1
+    assert batch.failed_candidates == 1
+    assert {item.skill_name for item in batch.results} == {"ready-bundle-a", "ready-bundle-b"}
+    failed_item = next(item for item in batch.results if item.skill_name == "ready-bundle-b")
+    assert failed_item.result.failure_reason == "dirty_checkout"
 
 
 def test_inspect_candidate_bundle_directory_builds_review_queue(

@@ -45,6 +45,8 @@ def test_synthesis_public_imports_are_available() -> None:
     assert hasattr(synthesis, "SkillAcquisitionResult")
     assert hasattr(synthesis, "CandidateBundleInspection")
     assert hasattr(synthesis, "CandidateBundleNextAction")
+    assert hasattr(synthesis, "CandidateBundlePublicationBatch")
+    assert hasattr(synthesis, "CandidateBundlePublicationBatchItem")
     assert hasattr(synthesis, "CandidateBundlePublishability")
     assert hasattr(synthesis, "CandidateBundleBlockerQueue")
     assert hasattr(synthesis, "CandidateBundleReview")

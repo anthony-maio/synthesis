@@ -267,6 +267,15 @@ class CandidateBundleBlockerQueue(BaseModel):
     candidates: List[CandidateBundleReviewQueueItem] = Field(default_factory=list)
 
 
+class CandidateBundlePublicationBatchItem(BaseModel):
+    """One candidate bundle publish attempt inside a batch run."""
+
+    bundle_path: str
+    skill_name: str
+    recommended_next_action: CandidateBundleNextAction
+    result: "SubmissionAutomationResult"
+
+
 class SkillSubmission(BaseModel):
     """PR-ready submission metadata for a synthesized or curated skill."""
 
@@ -316,6 +325,19 @@ class SubmissionAutomationResult(BaseModel):
     failure_reason: Optional[str] = None
     failure_details: List[str] = Field(default_factory=list)
     warnings: List[str] = Field(default_factory=list)
+
+
+class CandidateBundlePublicationBatch(BaseModel):
+    """Aggregated publication result for a filtered candidate queue."""
+
+    root_path: str
+    scanned_candidates: int
+    selected_candidates: int
+    published_candidates: int
+    failed_candidates: int
+    action_filter: CandidateBundleNextAction
+    action_counts: Dict[str, int] = Field(default_factory=dict)
+    results: List[CandidateBundlePublicationBatchItem] = Field(default_factory=list)
 
 
 class SkillDraft(BaseModel):

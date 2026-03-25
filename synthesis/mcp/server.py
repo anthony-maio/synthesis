@@ -108,6 +108,29 @@ class SynthesisMCPServer:
                 },
             },
             {
+                "name": "publish_candidate_bundle_directory",
+                "description": "Publish every candidate in a directory selected by one queue action.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "path": {"type": "string"},
+                        "action": {
+                            "type": "string",
+                            "enum": ACTION_ENUM,
+                            "default": CandidateBundleNextAction.READY_TO_PUBLISH.value,
+                        },
+                        "open_pull_request": {"type": "boolean"},
+                        "base_branch": {"type": "string"},
+                        "draft_pull_request": {"type": "boolean"},
+                        "labels": {"type": "array", "items": {"type": "string"}},
+                        "reviewers": {"type": "array", "items": {"type": "string"}},
+                        "use_temp_worktree": {"type": "boolean"},
+                        "worktree_root": {"type": "string"},
+                    },
+                    "required": ["path"],
+                },
+            },
+            {
                 "name": "publish_candidate_bundle_submission",
                 "description": "Write a challenger bundle into the canonical checkout, commit it, push it, and optionally open a pull request.",
                 "inputSchema": {
@@ -256,6 +279,36 @@ class SynthesisMCPServer:
                     }
                 )
             return json.dumps(envelope.model_dump(), indent=2, default=str)
+
+        if name == "publish_candidate_bundle_directory":
+            bundles_root = str(arguments.get("path", ""))
+            batch = self.client.publish_candidate_bundle_directory(
+                bundles_root,
+                action=(
+                    str(arguments["action"])
+                    if arguments.get("action") is not None
+                    else CandidateBundleNextAction.READY_TO_PUBLISH.value
+                ),
+                open_pull_request=bool(arguments.get("open_pull_request", False)),
+                base_branch=str(arguments.get("base_branch", "main")),
+                draft_pull_request=bool(arguments.get("draft_pull_request", False)),
+                labels=[str(label) for label in arguments.get("labels", [])],
+                reviewers=[str(reviewer) for reviewer in arguments.get("reviewers", [])],
+                use_temp_worktree=bool(arguments.get("use_temp_worktree", False)),
+                worktree_root=(
+                    str(arguments["worktree_root"])
+                    if arguments.get("worktree_root") is not None
+                    else None
+                ),
+            )
+            if not batch:
+                return json.dumps(
+                    {
+                        "success": False,
+                        "error": f"Candidate bundle directory '{bundles_root}' not found",
+                    }
+                )
+            return json.dumps(batch.model_dump(), indent=2, default=str)
 
         if name == "publish_candidate_bundle_submission":
             bundle_path = str(arguments.get("path", ""))

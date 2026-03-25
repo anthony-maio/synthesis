@@ -18,6 +18,8 @@ from synthesis.core.models import (
     CandidateBundleBlockerQueue,
     CandidateBundleInspection,
     CandidateBundleNextAction,
+    CandidateBundlePublicationBatch,
+    CandidateBundlePublicationBatchItem,
     CandidateBundlePublishability,
     CandidateBundleReview,
     CandidateBundleReviewQueue,
@@ -803,6 +805,63 @@ class SynthesisClient:
                     message = f"Failed to remove temporary worktree at {temp_worktree_root}."
                     if result is not None:
                         result.warnings.append(message)
+
+    def publish_candidate_bundle_directory(
+        self,
+        bundles_root: str,
+        *,
+        action: CandidateBundleNextAction | str = CandidateBundleNextAction.READY_TO_PUBLISH,
+        open_pull_request: bool = False,
+        base_branch: str = "main",
+        draft_pull_request: bool = False,
+        labels: Optional[List[str]] = None,
+        reviewers: Optional[List[str]] = None,
+        use_temp_worktree: bool = False,
+        worktree_root: Optional[str] = None,
+        allow_existing_target: bool = False,
+    ) -> Optional[CandidateBundlePublicationBatch]:
+        """Publish every candidate selected by one action-filtered queue view."""
+        action_filter = self._normalize_candidate_next_action(action)
+        if action_filter is None:
+            action_filter = CandidateBundleNextAction.READY_TO_PUBLISH
+
+        queue = self.inspect_candidate_bundle_directory(bundles_root, action=action_filter)
+        if not queue:
+            return None
+
+        results: List[CandidateBundlePublicationBatchItem] = []
+        for item in queue.candidates:
+            publish_result = self.publish_candidate_bundle_submission(
+                item.bundle_path,
+                open_pull_request=open_pull_request,
+                base_branch=base_branch,
+                draft_pull_request=draft_pull_request,
+                labels=labels,
+                reviewers=reviewers,
+                use_temp_worktree=use_temp_worktree,
+                worktree_root=worktree_root,
+                allow_existing_target=allow_existing_target,
+            )
+            results.append(
+                CandidateBundlePublicationBatchItem(
+                    bundle_path=item.bundle_path,
+                    skill_name=item.review.skill_name,
+                    recommended_next_action=item.recommended_next_action,
+                    result=publish_result,
+                )
+            )
+
+        published_candidates = sum(1 for item in results if item.result.success)
+        return CandidateBundlePublicationBatch(
+            root_path=queue.root_path,
+            scanned_candidates=queue.scanned_candidates,
+            selected_candidates=queue.total_candidates,
+            published_candidates=published_candidates,
+            failed_candidates=len(results) - published_candidates,
+            action_filter=action_filter,
+            action_counts=queue.action_counts,
+            results=results,
+        )
 
     def validate_candidate_bundle(self, bundle_path: str) -> CandidateBundleValidation:
         """Validate a miner-produced challenger bundle before install or submission."""
