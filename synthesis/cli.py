@@ -7,8 +7,10 @@ import asyncio
 import json
 from typing import Any
 
-from synthesis import SkillInstallPolicy, SynthesisClient
+from synthesis import CandidateBundleNextAction, SkillInstallPolicy, SynthesisClient
 from synthesis.skill_runtime import DEFAULT_CANONICAL_REPO_SLUG
+
+ACTION_CHOICES = [action.value for action in CandidateBundleNextAction]
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -57,12 +59,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Return a curator-facing review queue for a directory of challenger bundles.",
     )
     inspect_bundle_directory.add_argument("path")
+    inspect_bundle_directory.add_argument("--action", choices=ACTION_CHOICES)
 
     inspect_bundle_blockers = subparsers.add_parser(
         "inspect-candidate-bundle-blockers",
         help="Return only blocked challenger bundles from a directory review queue.",
     )
     inspect_bundle_blockers.add_argument("path")
+    inspect_bundle_blockers.add_argument("--action", choices=ACTION_CHOICES)
 
     prepare_bundle_submission = subparsers.add_parser(
         "prepare-candidate-bundle-submission",
@@ -156,7 +160,7 @@ async def run_command(args: argparse.Namespace) -> Any:
         )
 
     if args.command == "inspect-candidate-bundle-directory":
-        queue = client.inspect_candidate_bundle_directory(args.path)
+        queue = client.inspect_candidate_bundle_directory(args.path, action=args.action)
         return (
             queue.model_dump()
             if queue
@@ -164,7 +168,7 @@ async def run_command(args: argparse.Namespace) -> Any:
         )
 
     if args.command == "inspect-candidate-bundle-blockers":
-        blockers = client.inspect_candidate_bundle_blockers(args.path)
+        blockers = client.inspect_candidate_bundle_blockers(args.path, action=args.action)
         return (
             blockers.model_dump()
             if blockers

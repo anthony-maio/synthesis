@@ -468,18 +468,21 @@ class SynthesisClient:
     def inspect_candidate_bundle_directory(
         self,
         bundles_root: str,
+        *,
+        action: Optional[CandidateBundleNextAction | str] = None,
     ) -> Optional[CandidateBundleReviewQueue]:
         """Build a curator-facing review queue from a directory of candidate bundles."""
         root = Path(bundles_root).expanduser()
         if not root.is_dir():
             return None
+        action_filter = self._normalize_candidate_next_action(action)
 
-        items: List[CandidateBundleReviewQueueItem] = []
+        all_items: List[CandidateBundleReviewQueueItem] = []
         for bundle_dir in sorted(path for path in root.iterdir() if path.is_dir()):
             review = self.inspect_candidate_bundle_review(str(bundle_dir))
             if not review:
                 continue
-            items.append(
+            all_items.append(
                 CandidateBundleReviewQueueItem(
                     bundle_path=str(bundle_dir),
                     review=review,
@@ -487,6 +490,12 @@ class SynthesisClient:
                 )
             )
 
+        action_counts = self._count_candidate_actions(all_items)
+        items = (
+            [item for item in all_items if item.recommended_next_action == action_filter]
+            if action_filter
+            else all_items
+        )
         items.sort(
             key=lambda item: (
                 not item.publishability.publishable,
@@ -498,27 +507,41 @@ class SynthesisClient:
         total_candidates = len(items)
         return CandidateBundleReviewQueue(
             root_path=str(root),
+            scanned_candidates=len(all_items),
             total_candidates=total_candidates,
             ready_candidates=ready_candidates,
             blocked_candidates=total_candidates - ready_candidates,
+            action_filter=action_filter,
+            action_counts=action_counts,
             candidates=items,
         )
 
     def inspect_candidate_bundle_blockers(
         self,
         bundles_root: str,
+        *,
+        action: Optional[CandidateBundleNextAction | str] = None,
     ) -> Optional[CandidateBundleBlockerQueue]:
         """Return only blocked candidate bundles from a harvested directory."""
         queue = self.inspect_candidate_bundle_directory(bundles_root)
         if not queue:
             return None
 
+        action_filter = self._normalize_candidate_next_action(action)
         blocked_items = [item for item in queue.candidates if not item.publishable]
+        action_counts = self._count_candidate_actions(blocked_items)
+        filtered_items = (
+            [item for item in blocked_items if item.recommended_next_action == action_filter]
+            if action_filter
+            else blocked_items
+        )
         return CandidateBundleBlockerQueue(
             root_path=queue.root_path,
-            scanned_candidates=queue.total_candidates,
-            blocked_candidates=len(blocked_items),
-            candidates=blocked_items,
+            scanned_candidates=queue.scanned_candidates,
+            blocked_candidates=len(filtered_items),
+            action_filter=action_filter,
+            action_counts=action_counts,
+            candidates=filtered_items,
         )
 
     def inspect_candidate_bundle_publishability(
@@ -1205,6 +1228,28 @@ class SynthesisClient:
             return CandidateBundleNextAction.CHECK_REGISTRY_CONFIGURATION
 
         return CandidateBundleNextAction.REVIEW_PUBLISH_BLOCKER
+
+    def _normalize_candidate_next_action(
+        self,
+        action: Optional[CandidateBundleNextAction | str],
+    ) -> Optional[CandidateBundleNextAction]:
+        """Normalize an optional queue action filter into an enum value."""
+        if action is None or action == "":
+            return None
+        if isinstance(action, CandidateBundleNextAction):
+            return action
+        return CandidateBundleNextAction(str(action))
+
+    def _count_candidate_actions(
+        self,
+        items: List[CandidateBundleReviewQueueItem],
+    ) -> Dict[str, int]:
+        """Count queue items by recommended next action."""
+        counts: Dict[str, int] = {}
+        for item in items:
+            key = item.recommended_next_action.value
+            counts[key] = counts.get(key, 0) + 1
+        return counts
 
     def _live_registry_skills(self) -> List[SkillRecord]:
         """Return the current canonical registry catalog, if available."""

@@ -6,7 +6,9 @@ import json
 from typing import Dict, List
 
 from synthesis.client import SynthesisClient
-from synthesis.core.models import SkillInstallPolicy
+from synthesis.core.models import CandidateBundleNextAction, SkillInstallPolicy
+
+ACTION_ENUM = [action.value for action in CandidateBundleNextAction]
 
 
 class SynthesisMCPServer:
@@ -77,7 +79,10 @@ class SynthesisMCPServer:
                 "description": "Return a curator-facing review queue for a directory of challenger bundles.",
                 "inputSchema": {
                     "type": "object",
-                    "properties": {"path": {"type": "string"}},
+                    "properties": {
+                        "path": {"type": "string"},
+                        "action": {"type": "string", "enum": ACTION_ENUM},
+                    },
                     "required": ["path"],
                 },
             },
@@ -86,7 +91,10 @@ class SynthesisMCPServer:
                 "description": "Return only blocked challenger bundles from a directory review queue.",
                 "inputSchema": {
                     "type": "object",
-                    "properties": {"path": {"type": "string"}},
+                    "properties": {
+                        "path": {"type": "string"},
+                        "action": {"type": "string", "enum": ACTION_ENUM},
+                    },
                     "required": ["path"],
                 },
             },
@@ -209,7 +217,10 @@ class SynthesisMCPServer:
 
         if name == "inspect_candidate_bundle_directory":
             bundles_root = str(arguments.get("path", ""))
-            queue = self.client.inspect_candidate_bundle_directory(bundles_root)
+            queue = self.client.inspect_candidate_bundle_directory(
+                bundles_root,
+                action=(str(arguments["action"]) if arguments.get("action") is not None else None),
+            )
             if not queue:
                 return json.dumps(
                     {
@@ -221,7 +232,10 @@ class SynthesisMCPServer:
 
         if name == "inspect_candidate_bundle_blockers":
             bundles_root = str(arguments.get("path", ""))
-            blockers = self.client.inspect_candidate_bundle_blockers(bundles_root)
+            blockers = self.client.inspect_candidate_bundle_blockers(
+                bundles_root,
+                action=(str(arguments["action"]) if arguments.get("action") is not None else None),
+            )
             if not blockers:
                 return json.dumps(
                     {

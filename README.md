@@ -119,6 +119,8 @@ synthesis inspect-candidate-bundle-detail ./candidate-bundle
 synthesis inspect-candidate-bundle-review ./candidate-bundle
 synthesis inspect-candidate-bundle-directory ./extracted_skills
 synthesis inspect-candidate-bundle-blockers ./extracted_skills
+synthesis inspect-candidate-bundle-directory ./extracted_skills --action refresh_against_live_canon
+synthesis inspect-candidate-bundle-blockers ./extracted_skills --action fix_validation_errors
 synthesis prepare-candidate-bundle-submission ./candidate-bundle
 synthesis publish-candidate-bundle-submission ./candidate-bundle --open-pull-request --draft-pull-request --label challenger --reviewer anthony-maio
 synthesis publish-candidate-bundle-submission ./candidate-bundle --use-temp-worktree --worktree-root ./tmp-worktrees
@@ -127,7 +129,7 @@ synthesis submit-candidate-bundle ./candidate-bundle
 synthesis install-candidate-bundle ./candidate-bundle --allow-challengers
 ```
 
-Candidate bundle detail and review outputs include both publishability and a deterministic `recommended_next_action`, so curators can distinguish `ready_to_publish`, `fix_validation_errors`, and canon-refresh or reclassification work without attempting a publish.
+Candidate bundle detail and review outputs include both publishability and a deterministic `recommended_next_action`, and the directory/blocker queue views now expose `action_counts` plus optional action filtering. That lets curators distinguish `ready_to_publish`, `fix_validation_errors`, and canon-refresh or reclassification work without attempting a publish.
 
 ## Development
 

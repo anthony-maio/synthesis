@@ -514,7 +514,10 @@ async def test_mcp_server_exposes_skill_management_tools(
     directory_payload = json.loads(directory_response)
 
     assert directory_payload["total_candidates"] == 1
+    assert directory_payload["scanned_candidates"] == 1
     assert directory_payload["ready_candidates"] == 1
+    assert directory_payload["action_counts"]["ready_to_publish"] == 1
+    assert directory_payload["action_filter"] is None
 
     blockers_response = await server.call_tool(
         "inspect_candidate_bundle_blockers",
@@ -524,6 +527,8 @@ async def test_mcp_server_exposes_skill_management_tools(
 
     assert blockers_payload["scanned_candidates"] == 1
     assert blockers_payload["blocked_candidates"] == 0
+    assert blockers_payload["action_counts"] == {}
+    assert blockers_payload["action_filter"] is None
     assert blockers_payload["candidates"] == []
 
     envelope_response = await server.call_tool(
@@ -1253,8 +1258,14 @@ def test_inspect_candidate_bundle_directory_builds_review_queue(
 
     assert queue is not None
     assert queue.total_candidates == 2
+    assert queue.scanned_candidates == 2
     assert queue.ready_candidates == 1
     assert queue.blocked_candidates == 1
+    assert queue.action_counts == {
+        "ready_to_publish": 1,
+        "fix_validation_errors": 1,
+    }
+    assert queue.action_filter is None
     assert queue.candidates[0].ready_for_review is True
     assert queue.candidates[0].publishable is True
     assert queue.candidates[0].blocked_reason is None
@@ -1298,8 +1309,11 @@ def test_inspect_candidate_bundle_directory_surfaces_publishability_blockers(
 
     assert queue is not None
     assert queue.total_candidates == 1
+    assert queue.scanned_candidates == 1
     assert queue.ready_candidates == 0
     assert queue.blocked_candidates == 1
+    assert queue.action_counts == {"refresh_against_live_canon": 1}
+    assert queue.action_filter is None
     assert queue.candidates[0].ready_for_review is True
     assert queue.candidates[0].publishable is False
     assert queue.candidates[0].blocked_reason == "stale_registry_snapshot"
@@ -1345,11 +1359,120 @@ def test_inspect_candidate_bundle_blockers_returns_only_blocked_candidates(
     assert blockers is not None
     assert blockers.scanned_candidates == 2
     assert blockers.blocked_candidates == 1
+    assert blockers.action_counts == {"refresh_against_live_canon": 1}
+    assert blockers.action_filter is None
     assert len(blockers.candidates) == 1
     assert blockers.candidates[0].review.skill_name == "stale-bundle"
     assert blockers.candidates[0].publishable is False
     assert blockers.candidates[0].blocked_reason == "stale_registry_snapshot"
     assert blockers.candidates[0].recommended_next_action == "refresh_against_live_canon"
+
+
+def test_inspect_candidate_bundle_directory_filters_by_action(
+    skill_roots: tuple[Path, Path],
+) -> None:
+    canonical_root, install_root = skill_roots
+    _write_skill(
+        canonical_root,
+        name="repo-surveyor",
+        description="Canonical repo survey skill.",
+        keywords=["repo", "survey"],
+    )
+    _write_catalog(
+        canonical_root,
+        [_repo_surveyor_catalog_entry()],
+        snapshot_version="snapshot-2026-03-24",
+    )
+    bundles_root = canonical_root / "candidate-bundles"
+    _write_candidate_bundle(
+        bundles_root,
+        name="ready-bundle",
+        description="Use when a ready bundle should remain publishable.",
+        registry_overrides={"registry_snapshot_version": "snapshot-2026-03-24"},
+    )
+    _write_candidate_bundle(
+        bundles_root,
+        name="stale-bundle",
+        description="Use when a stale bundle should require a canon refresh.",
+    )
+
+    client = SynthesisClient(
+        provider_type="mock",
+        canonical_repo_path=str(canonical_root),
+        host_root=str(install_root),
+    )
+
+    queue = client.inspect_candidate_bundle_directory(
+        str(bundles_root),
+        action="refresh_against_live_canon",
+    )
+
+    assert queue is not None
+    assert queue.scanned_candidates == 2
+    assert queue.total_candidates == 1
+    assert queue.blocked_candidates == 1
+    assert queue.ready_candidates == 0
+    assert queue.action_counts == {
+        "ready_to_publish": 1,
+        "refresh_against_live_canon": 1,
+    }
+    assert queue.action_filter == "refresh_against_live_canon"
+    assert len(queue.candidates) == 1
+    assert queue.candidates[0].review.skill_name == "stale-bundle"
+
+
+def test_inspect_candidate_bundle_blockers_filters_by_action(
+    skill_roots: tuple[Path, Path],
+) -> None:
+    canonical_root, install_root = skill_roots
+    _write_skill(
+        canonical_root,
+        name="repo-surveyor",
+        description="Canonical repo survey skill.",
+        keywords=["repo", "survey"],
+    )
+    _write_catalog(
+        canonical_root,
+        [_repo_surveyor_catalog_entry()],
+        snapshot_version="snapshot-2026-03-24",
+    )
+    bundles_root = canonical_root / "candidate-bundles"
+    _write_candidate_bundle(
+        bundles_root,
+        name="stale-bundle",
+        description="Use when a stale bundle should require a canon refresh.",
+    )
+    invalid_bundle = _write_candidate_bundle(
+        bundles_root,
+        name="invalid-bundle",
+        description="Use when a bundle should fail validation.",
+    )
+    registry_path = invalid_bundle / "REGISTRY.json"
+    payload = json.loads(registry_path.read_text(encoding="utf-8"))
+    payload["nearest_canonical"] = None
+    registry_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+    client = SynthesisClient(
+        provider_type="mock",
+        canonical_repo_path=str(canonical_root),
+        host_root=str(install_root),
+    )
+
+    blockers = client.inspect_candidate_bundle_blockers(
+        str(bundles_root),
+        action="refresh_against_live_canon",
+    )
+
+    assert blockers is not None
+    assert blockers.scanned_candidates == 2
+    assert blockers.blocked_candidates == 1
+    assert blockers.action_counts == {
+        "fix_validation_errors": 1,
+        "refresh_against_live_canon": 1,
+    }
+    assert blockers.action_filter == "refresh_against_live_canon"
+    assert len(blockers.candidates) == 1
+    assert blockers.candidates[0].review.skill_name == "stale-bundle"
 
 
 def test_validate_candidate_bundle_rejects_missing_variant_context(

@@ -247,9 +247,12 @@ class CandidateBundleReviewQueue(BaseModel):
     """Reviewer queue for a directory of harvested candidate bundles."""
 
     root_path: str
+    scanned_candidates: int
     total_candidates: int
     ready_candidates: int
     blocked_candidates: int
+    action_filter: Optional[CandidateBundleNextAction] = None
+    action_counts: Dict[str, int] = Field(default_factory=dict)
     candidates: List[CandidateBundleReviewQueueItem] = Field(default_factory=list)
 
 
@@ -259,6 +262,8 @@ class CandidateBundleBlockerQueue(BaseModel):
     root_path: str
     scanned_candidates: int
     blocked_candidates: int
+    action_filter: Optional[CandidateBundleNextAction] = None
+    action_counts: Dict[str, int] = Field(default_factory=dict)
     candidates: List[CandidateBundleReviewQueueItem] = Field(default_factory=list)
 
 
