@@ -22,6 +22,9 @@ from synthesis.core.models import (
     CandidateBundlePublicationBatchItem,
     CandidateBundlePublishability,
     CandidateBundleReview,
+    CandidateBundleReviewerReport,
+    CandidateBundleReviewerReportItem,
+    CandidateBundleReviewerReportSection,
     CandidateBundleReviewQueue,
     CandidateBundleReviewQueueItem,
     CandidateBundleSubmissionEnvelope,
@@ -118,6 +121,45 @@ def _render_candidate_pull_request_body(review: CandidateBundleReview) -> str:
         sections.extend(f"- {warning}" for warning in review.validation_warnings)
     sections.append("")
     return "\n".join(sections)
+
+
+def _humanize_candidate_action(action: CandidateBundleNextAction) -> str:
+    """Render one action enum as a compact human-readable heading."""
+    return action.value.replace("_", " ").title()
+
+
+def _render_candidate_reviewer_report(
+    *,
+    scanned_candidates: int,
+    included_candidates: int,
+    include_publishable: bool,
+    sections: List[CandidateBundleReviewerReportSection],
+) -> str:
+    """Render a compact markdown reviewer report from grouped sections."""
+    lines = [
+        "# Candidate Review Report",
+        "",
+        f"- Scanned candidates: {scanned_candidates}",
+        f"- Included candidates: {included_candidates}",
+        f"- Include publishable: {'yes' if include_publishable else 'no'}",
+        "",
+    ]
+    if not sections:
+        lines.append("No candidates matched the current reviewer report scope.")
+        return "\n".join(lines)
+
+    for section in sections:
+        lines.extend([f"## {_humanize_candidate_action(section.action)} ({section.count})", ""])
+        for item in section.candidates:
+            line = f"- `{item.skill_name}`: {item.headline}"
+            if item.blocked_reason:
+                line += f" [{item.blocked_reason}]"
+            lines.append(line)
+            lines.append(f"  Path: `{item.bundle_path}`")
+            if item.validation_errors:
+                lines.append(f"  First issue: {item.validation_errors[0]}")
+        lines.append("")
+    return "\n".join(lines).rstrip()
 
 
 class ResolutionMethod(Enum):
@@ -544,6 +586,61 @@ class SynthesisClient:
             action_filter=action_filter,
             action_counts=action_counts,
             candidates=filtered_items,
+        )
+
+    def review_candidate_bundle_directory(
+        self,
+        bundles_root: str,
+        *,
+        include_publishable: bool = False,
+    ) -> Optional[CandidateBundleReviewerReport]:
+        """Build a compact grouped reviewer report for one candidate bundle directory."""
+        queue = self.inspect_candidate_bundle_directory(bundles_root)
+        if not queue:
+            return None
+
+        items = (
+            list(queue.candidates)
+            if include_publishable
+            else [item for item in queue.candidates if not item.publishable]
+        )
+        section_order = list(CandidateBundleNextAction)
+        sections: List[CandidateBundleReviewerReportSection] = []
+        for action in section_order:
+            matching_items = [item for item in items if item.recommended_next_action == action]
+            if not matching_items:
+                continue
+            sections.append(
+                CandidateBundleReviewerReportSection(
+                    action=action,
+                    count=len(matching_items),
+                    candidates=[
+                        CandidateBundleReviewerReportItem(
+                            skill_name=item.review.skill_name,
+                            bundle_path=item.bundle_path,
+                            headline=item.review.headline,
+                            recommended_next_action=item.recommended_next_action,
+                            blocked_reason=item.blocked_reason,
+                            validation_errors=item.validation_errors,
+                        )
+                        for item in matching_items
+                    ],
+                )
+            )
+
+        return CandidateBundleReviewerReport(
+            root_path=queue.root_path,
+            scanned_candidates=queue.scanned_candidates,
+            included_candidates=len(items),
+            include_publishable=include_publishable,
+            action_counts=queue.action_counts,
+            sections=sections,
+            report_markdown=_render_candidate_reviewer_report(
+                scanned_candidates=queue.scanned_candidates,
+                included_candidates=len(items),
+                include_publishable=include_publishable,
+                sections=sections,
+            ),
         )
 
     def inspect_candidate_bundle_publishability(

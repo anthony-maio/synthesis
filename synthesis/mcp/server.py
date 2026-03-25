@@ -99,6 +99,18 @@ class SynthesisMCPServer:
                 },
             },
             {
+                "name": "review_candidate_bundle_directory",
+                "description": "Return a compact grouped reviewer report for a directory of challenger bundles.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "path": {"type": "string"},
+                        "include_publishable": {"type": "boolean"},
+                    },
+                    "required": ["path"],
+                },
+            },
+            {
                 "name": "prepare_candidate_bundle_submission",
                 "description": "Return a PR-ready submission envelope for a challenger bundle.",
                 "inputSchema": {
@@ -267,6 +279,21 @@ class SynthesisMCPServer:
                     }
                 )
             return json.dumps(blockers.model_dump(), indent=2, default=str)
+
+        if name == "review_candidate_bundle_directory":
+            bundles_root = str(arguments.get("path", ""))
+            report = self.client.review_candidate_bundle_directory(
+                bundles_root,
+                include_publishable=bool(arguments.get("include_publishable", False)),
+            )
+            if not report:
+                return json.dumps(
+                    {
+                        "success": False,
+                        "error": f"Candidate bundle directory '{bundles_root}' not found",
+                    }
+                )
+            return json.dumps(report.model_dump(), indent=2, default=str)
 
         if name == "prepare_candidate_bundle_submission":
             bundle_path = str(arguments.get("path", ""))

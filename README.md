@@ -121,6 +121,8 @@ synthesis inspect-candidate-bundle-directory ./extracted_skills
 synthesis inspect-candidate-bundle-blockers ./extracted_skills
 synthesis inspect-candidate-bundle-directory ./extracted_skills --action refresh_against_live_canon
 synthesis inspect-candidate-bundle-blockers ./extracted_skills --action fix_validation_errors
+synthesis review-candidate-bundle-directory ./extracted_skills
+synthesis review-candidate-bundle-directory ./extracted_skills --include-ready
 synthesis prepare-candidate-bundle-submission ./candidate-bundle
 synthesis publish-candidate-bundle-directory ./extracted_skills --action ready_to_publish
 synthesis publish-candidate-bundle-submission ./candidate-bundle --open-pull-request --draft-pull-request --label challenger --reviewer anthony-maio
@@ -130,7 +132,7 @@ synthesis submit-candidate-bundle ./candidate-bundle
 synthesis install-candidate-bundle ./candidate-bundle --allow-challengers
 ```
 
-Candidate bundle detail and review outputs include both publishability and a deterministic `recommended_next_action`, the directory/blocker queue views expose `action_counts` plus optional action filtering, and the directory publish flow can batch only the candidates that are already `ready_to_publish`.
+Candidate bundle detail and review outputs include both publishability and a deterministic `recommended_next_action`, the directory/blocker queue views expose `action_counts` plus optional action filtering, the reviewer report produces a compact grouped worklist with markdown output for non-publishable actions by default, and the directory publish flow can batch only the candidates that are already `ready_to_publish`.
 
 ## Development
 

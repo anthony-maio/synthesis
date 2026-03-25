@@ -340,6 +340,37 @@ class CandidateBundlePublicationBatch(BaseModel):
     results: List[CandidateBundlePublicationBatchItem] = Field(default_factory=list)
 
 
+class CandidateBundleReviewerReportItem(BaseModel):
+    """Compact reviewer work item for one candidate bundle."""
+
+    skill_name: str
+    bundle_path: str
+    headline: str
+    recommended_next_action: CandidateBundleNextAction
+    blocked_reason: Optional[str] = None
+    validation_errors: List[str] = Field(default_factory=list)
+
+
+class CandidateBundleReviewerReportSection(BaseModel):
+    """One action-grouped section inside a reviewer report."""
+
+    action: CandidateBundleNextAction
+    count: int
+    candidates: List[CandidateBundleReviewerReportItem] = Field(default_factory=list)
+
+
+class CandidateBundleReviewerReport(BaseModel):
+    """Grouped reviewer report for a directory of candidate bundles."""
+
+    root_path: str
+    scanned_candidates: int
+    included_candidates: int
+    include_publishable: bool = False
+    action_counts: Dict[str, int] = Field(default_factory=dict)
+    sections: List[CandidateBundleReviewerReportSection] = Field(default_factory=list)
+    report_markdown: str
+
+
 class SkillDraft(BaseModel):
     """Draft skill package produced by synthesis."""
 

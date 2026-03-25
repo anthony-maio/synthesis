@@ -468,6 +468,7 @@ async def test_mcp_server_exposes_skill_management_tools(
         "prepare_candidate_bundle_submission",
         "publish_candidate_bundle_directory",
         "publish_candidate_bundle_submission",
+        "review_candidate_bundle_directory",
         "validate_candidate_bundle",
         "submit_candidate_bundle",
         "submit_skill",
@@ -532,6 +533,17 @@ async def test_mcp_server_exposes_skill_management_tools(
     assert blockers_payload["action_counts"] == {}
     assert blockers_payload["action_filter"] is None
     assert blockers_payload["candidates"] == []
+
+    report_response = await server.call_tool(
+        "review_candidate_bundle_directory",
+        {"path": str(canonical_root / "candidate-bundles"), "include_publishable": True},
+    )
+    report_payload = json.loads(report_response)
+
+    assert report_payload["scanned_candidates"] == 1
+    assert report_payload["included_candidates"] == 1
+    assert report_payload["include_publishable"] is True
+    assert report_payload["sections"][0]["action"] == "ready_to_publish"
 
     envelope_response = await server.call_tool(
         "prepare_candidate_bundle_submission",
@@ -1603,6 +1615,115 @@ def test_inspect_candidate_bundle_blockers_filters_by_action(
     assert blockers.action_filter == "refresh_against_live_canon"
     assert len(blockers.candidates) == 1
     assert blockers.candidates[0].review.skill_name == "stale-bundle"
+
+
+def test_review_candidate_bundle_directory_summarizes_non_publishable_actions(
+    skill_roots: tuple[Path, Path],
+) -> None:
+    canonical_root, install_root = skill_roots
+    _write_skill(
+        canonical_root,
+        name="repo-surveyor",
+        description="Canonical repo survey skill.",
+        keywords=["repo", "survey"],
+    )
+    _write_catalog(
+        canonical_root,
+        [_repo_surveyor_catalog_entry()],
+        snapshot_version="snapshot-2026-03-24",
+    )
+    bundles_root = canonical_root / "candidate-bundles"
+    _write_candidate_bundle(
+        bundles_root,
+        name="ready-bundle",
+        description="Use when a ready bundle should be omitted from the default reviewer report.",
+        registry_overrides={"registry_snapshot_version": "snapshot-2026-03-24"},
+    )
+    stale_bundle = _write_candidate_bundle(
+        bundles_root,
+        name="stale-bundle",
+        description="Use when a stale bundle should appear in the reviewer report.",
+    )
+    invalid_bundle = _write_candidate_bundle(
+        bundles_root,
+        name="invalid-bundle",
+        description="Use when a bundle should fail validation in the reviewer report.",
+    )
+    registry_path = invalid_bundle / "REGISTRY.json"
+    payload = json.loads(registry_path.read_text(encoding="utf-8"))
+    payload["nearest_canonical"] = None
+    registry_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+    client = SynthesisClient(
+        provider_type="mock",
+        canonical_repo_path=str(canonical_root),
+        host_root=str(install_root),
+    )
+
+    report = client.review_candidate_bundle_directory(str(bundles_root))
+
+    assert report is not None
+    assert report.scanned_candidates == 3
+    assert report.included_candidates == 2
+    assert report.include_publishable is False
+    assert report.action_counts == {
+        "ready_to_publish": 1,
+        "refresh_against_live_canon": 1,
+        "fix_validation_errors": 1,
+    }
+    assert [section.action for section in report.sections] == [
+        "fix_validation_errors",
+        "refresh_against_live_canon",
+    ]
+    assert {item.skill_name for section in report.sections for item in section.candidates} == {
+        "invalid-bundle",
+        "stale-bundle",
+    }
+    assert "invalid-bundle" in report.report_markdown
+    assert "stale-bundle" in report.report_markdown
+    assert str(stale_bundle) in report.report_markdown
+
+
+def test_review_candidate_bundle_directory_can_include_publishable_candidates(
+    skill_roots: tuple[Path, Path],
+) -> None:
+    canonical_root, install_root = skill_roots
+    _write_skill(
+        canonical_root,
+        name="repo-surveyor",
+        description="Canonical repo survey skill.",
+        keywords=["repo", "survey"],
+    )
+    _write_catalog(
+        canonical_root,
+        [_repo_surveyor_catalog_entry()],
+        snapshot_version="snapshot-2026-03-24",
+    )
+    bundles_root = canonical_root / "candidate-bundles"
+    _write_candidate_bundle(
+        bundles_root,
+        name="ready-bundle",
+        description="Use when a ready bundle should be included in the reviewer report.",
+        registry_overrides={"registry_snapshot_version": "snapshot-2026-03-24"},
+    )
+
+    client = SynthesisClient(
+        provider_type="mock",
+        canonical_repo_path=str(canonical_root),
+        host_root=str(install_root),
+    )
+
+    report = client.review_candidate_bundle_directory(
+        str(bundles_root),
+        include_publishable=True,
+    )
+
+    assert report is not None
+    assert report.scanned_candidates == 1
+    assert report.included_candidates == 1
+    assert report.include_publishable is True
+    assert [section.action for section in report.sections] == ["ready_to_publish"]
+    assert report.sections[0].candidates[0].skill_name == "ready-bundle"
 
 
 def test_validate_candidate_bundle_rejects_missing_variant_context(
