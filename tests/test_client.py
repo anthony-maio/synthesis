@@ -491,6 +491,7 @@ async def test_mcp_server_exposes_skill_management_tools(
     assert detail_payload["skill"]["name"] == "review-bundle"
     assert detail_payload["validation"]["valid"] is True
     assert detail_payload["publishability"]["publishable"] is True
+    assert detail_payload["recommended_next_action"] == "ready_to_publish"
     assert "Nearest canonical: repo-surveyor" in detail_payload["miner_report"]
 
     review_response = await server.call_tool(
@@ -502,6 +503,7 @@ async def test_mcp_server_exposes_skill_management_tools(
     assert review_payload["skill_name"] == "review-bundle"
     assert review_payload["ready_for_review"] is True
     assert review_payload["publishability"]["publishable"] is True
+    assert review_payload["recommended_next_action"] == "ready_to_publish"
     assert review_payload["submission_type"] == "variant_candidate"
     assert review_payload["headline"] == "Variant candidate for repo-surveyor"
 
@@ -596,6 +598,7 @@ def test_inspect_candidate_bundle_detail_includes_validation_and_report(
     assert detail.validation.valid is True
     assert detail.publishability.publishable is False
     assert detail.publishability.blocked_reason == "missing_nearest_canonical"
+    assert detail.recommended_next_action == "reclassify_against_live_canon"
     assert detail.miner_report is not None
     assert "Nearest canonical: repo-surveyor" in detail.miner_report
     assert detail.provenance["source_commit"] == "abc123def"
@@ -638,6 +641,7 @@ def test_inspect_candidate_bundle_review_summarizes_curator_decision_surface(
     assert review.ready_for_review is True
     assert review.publishability.publishable is True
     assert review.publishability.blocked_reason is None
+    assert review.recommended_next_action == "ready_to_publish"
     assert review.headline == "Variant candidate for repo-surveyor"
     assert review.validation_errors == []
     assert review.license_status == "permissive"
@@ -673,6 +677,7 @@ def test_inspect_candidate_bundle_review_surfaces_blockers(
     assert review.ready_for_review is False
     assert review.publishability.publishable is False
     assert review.publishability.blocked_reason == "invalid_candidate_bundle"
+    assert review.recommended_next_action == "fix_validation_errors"
     assert any("nearest_canonical" in error for error in review.validation_errors)
     assert "Blocked" in review.headline
 
@@ -710,6 +715,7 @@ def test_inspect_candidate_bundle_review_surfaces_publishability_blocker(
     assert review.ready_for_review is True
     assert review.publishability.publishable is False
     assert review.publishability.blocked_reason == "stale_registry_snapshot"
+    assert review.recommended_next_action == "refresh_against_live_canon"
 
 
 def test_submit_candidate_bundle_prepares_submission_with_metadata(
@@ -1252,9 +1258,11 @@ def test_inspect_candidate_bundle_directory_builds_review_queue(
     assert queue.candidates[0].ready_for_review is True
     assert queue.candidates[0].publishable is True
     assert queue.candidates[0].blocked_reason is None
+    assert queue.candidates[0].recommended_next_action == "ready_to_publish"
     assert queue.candidates[1].ready_for_review is False
     assert queue.candidates[1].publishable is False
     assert queue.candidates[1].blocked_reason == "invalid_candidate_bundle"
+    assert queue.candidates[1].recommended_next_action == "fix_validation_errors"
     assert queue.candidates[1].validation_errors
 
 
@@ -1295,6 +1303,7 @@ def test_inspect_candidate_bundle_directory_surfaces_publishability_blockers(
     assert queue.candidates[0].ready_for_review is True
     assert queue.candidates[0].publishable is False
     assert queue.candidates[0].blocked_reason == "stale_registry_snapshot"
+    assert queue.candidates[0].recommended_next_action == "refresh_against_live_canon"
 
 
 def test_inspect_candidate_bundle_blockers_returns_only_blocked_candidates(
@@ -1340,6 +1349,7 @@ def test_inspect_candidate_bundle_blockers_returns_only_blocked_candidates(
     assert blockers.candidates[0].review.skill_name == "stale-bundle"
     assert blockers.candidates[0].publishable is False
     assert blockers.candidates[0].blocked_reason == "stale_registry_snapshot"
+    assert blockers.candidates[0].recommended_next_action == "refresh_against_live_canon"
 
 
 def test_validate_candidate_bundle_rejects_missing_variant_context(

@@ -155,12 +155,26 @@ class CandidateBundleValidation(BaseModel):
     skill: Optional["SkillRecord"] = None
 
 
+class CandidateBundleNextAction(str, Enum):
+    """Deterministic next step for a reviewed candidate bundle."""
+
+    READY_TO_PUBLISH = "ready_to_publish"
+    FIX_VALIDATION_ERRORS = "fix_validation_errors"
+    REVIEW_PACKAGING_GATE = "review_packaging_gate"
+    REFRESH_AGAINST_LIVE_CANON = "refresh_against_live_canon"
+    RECLASSIFY_AGAINST_LIVE_CANON = "reclassify_against_live_canon"
+    RESOLVE_TARGET_COLLISION = "resolve_target_collision"
+    CHECK_REGISTRY_CONFIGURATION = "check_registry_configuration"
+    REVIEW_PUBLISH_BLOCKER = "review_publish_blocker"
+
+
 class CandidateBundleInspection(BaseModel):
     """Reviewer-facing inspection payload for a candidate bundle."""
 
     skill: SkillRecord
     validation: CandidateBundleValidation
     publishability: "CandidateBundlePublishability"
+    recommended_next_action: CandidateBundleNextAction
     governance: Dict[str, Any] = Field(default_factory=dict)
     provenance: Dict[str, Any] = Field(default_factory=dict)
     miner_report: Optional[str] = None
@@ -175,6 +189,7 @@ class CandidateBundleReview(BaseModel):
     headline: str
     ready_for_review: bool
     publishability: "CandidateBundlePublishability"
+    recommended_next_action: CandidateBundleNextAction
     submission_type: Optional[str] = None
     capability_family: Optional[str] = None
     nearest_canonical: Optional[str] = None
@@ -221,6 +236,11 @@ class CandidateBundleReviewQueueItem(BaseModel):
     def blocked_reason(self) -> Optional[str]:
         """Expose the first publishability blocker directly for queue display."""
         return self.publishability.blocked_reason
+
+    @property
+    def recommended_next_action(self) -> CandidateBundleNextAction:
+        """Expose the review action directly for queue display."""
+        return self.review.recommended_next_action
 
 
 class CandidateBundleReviewQueue(BaseModel):

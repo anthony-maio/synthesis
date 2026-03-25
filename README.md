@@ -127,6 +127,8 @@ synthesis submit-candidate-bundle ./candidate-bundle
 synthesis install-candidate-bundle ./candidate-bundle --allow-challengers
 ```
 
+Candidate bundle detail and review outputs include both publishability and a deterministic `recommended_next_action`, so curators can distinguish `ready_to_publish`, `fix_validation_errors`, and canon-refresh or reclassification work without attempting a publish.
+
 ## Development
 
 Run tests:

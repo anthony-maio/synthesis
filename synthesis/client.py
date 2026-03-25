@@ -17,6 +17,7 @@ from typing import Any, Dict, List, Optional
 from synthesis.core.models import (
     CandidateBundleBlockerQueue,
     CandidateBundleInspection,
+    CandidateBundleNextAction,
     CandidateBundlePublishability,
     CandidateBundleReview,
     CandidateBundleReviewQueue,
@@ -60,6 +61,18 @@ ALLOWED_VARIANT_REASONS = {
     "tool_surface",
     "security_model",
     "distinct_workflow",
+}
+
+REGISTRY_CONFIGURATION_FAILURES = {
+    "canonical_repository_unavailable",
+    "canonical_repository_not_git",
+    "git_unavailable",
+    "dirty_checkout",
+}
+
+LIVE_CANON_RECLASSIFICATION_FAILURES = {
+    "capability_family_conflict",
+    "missing_nearest_canonical",
 }
 
 
@@ -382,6 +395,11 @@ class SynthesisClient:
         publishability = self.inspect_candidate_bundle_publishability(bundle_path)
         if not publishability:
             return None
+        recommended_next_action = self._derive_candidate_next_action(
+            validation=validation,
+            publishability=publishability,
+            packaging_allowed=validation.skill.packaging_allowed,
+        )
         try:
             record, governance, provenance, text_files, binary_files = inspect_candidate_bundle_payload(
                 bundle_path,
@@ -393,6 +411,7 @@ class SynthesisClient:
             skill=record,
             validation=validation,
             publishability=publishability,
+            recommended_next_action=recommended_next_action,
             governance=governance,
             provenance=provenance,
             miner_report=text_files.get("MINER_REPORT.md"),
@@ -433,6 +452,7 @@ class SynthesisClient:
             headline=headline,
             ready_for_review=ready_for_review,
             publishability=detail.publishability,
+            recommended_next_action=detail.recommended_next_action,
             submission_type=skill.submission_type,
             capability_family=skill.capability_family,
             nearest_canonical=skill.nearest_canonical,
@@ -1154,6 +1174,37 @@ class SynthesisClient:
                 )
 
         return None, []
+
+    def _derive_candidate_next_action(
+        self,
+        *,
+        validation: CandidateBundleValidation,
+        publishability: CandidateBundlePublishability,
+        packaging_allowed: Optional[bool],
+    ) -> CandidateBundleNextAction:
+        """Derive the next operator action from validation and publishability state."""
+        if not validation.valid:
+            return CandidateBundleNextAction.FIX_VALIDATION_ERRORS
+
+        if packaging_allowed is not True:
+            return CandidateBundleNextAction.REVIEW_PACKAGING_GATE
+
+        if publishability.publishable:
+            return CandidateBundleNextAction.READY_TO_PUBLISH
+
+        if publishability.blocked_reason == "stale_registry_snapshot":
+            return CandidateBundleNextAction.REFRESH_AGAINST_LIVE_CANON
+
+        if publishability.blocked_reason in LIVE_CANON_RECLASSIFICATION_FAILURES:
+            return CandidateBundleNextAction.RECLASSIFY_AGAINST_LIVE_CANON
+
+        if publishability.blocked_reason == "existing_target":
+            return CandidateBundleNextAction.RESOLVE_TARGET_COLLISION
+
+        if publishability.blocked_reason in REGISTRY_CONFIGURATION_FAILURES:
+            return CandidateBundleNextAction.CHECK_REGISTRY_CONFIGURATION
+
+        return CandidateBundleNextAction.REVIEW_PUBLISH_BLOCKER
 
     def _live_registry_skills(self) -> List[SkillRecord]:
         """Return the current canonical registry catalog, if available."""
