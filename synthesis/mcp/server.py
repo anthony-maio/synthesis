@@ -137,6 +137,26 @@ class SynthesisMCPServer:
                 },
             },
             {
+                "name": "publish_candidate_bundle_handoff",
+                "description": "Write curator handoff artifacts and publish the ready subset.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "path": {"type": "string"},
+                        "output_dir": {"type": "string"},
+                        "include_publishable_in_review": {"type": "boolean"},
+                        "open_pull_request": {"type": "boolean"},
+                        "base_branch": {"type": "string"},
+                        "draft_pull_request": {"type": "boolean"},
+                        "labels": {"type": "array", "items": {"type": "string"}},
+                        "reviewers": {"type": "array", "items": {"type": "string"}},
+                        "use_temp_worktree": {"type": "boolean"},
+                        "worktree_root": {"type": "string"},
+                    },
+                    "required": ["path", "output_dir"],
+                },
+            },
+            {
                 "name": "prepare_candidate_bundle_submission",
                 "description": "Return a PR-ready submission envelope for a challenger bundle.",
                 "inputSchema": {
@@ -356,6 +376,36 @@ class SynthesisMCPServer:
                     }
                 )
             return json.dumps(handoff.model_dump(), indent=2, default=str)
+
+        if name == "publish_candidate_bundle_handoff":
+            bundles_root = str(arguments.get("path", ""))
+            output_dir = str(arguments.get("output_dir", ""))
+            handoff_publication = self.client.publish_candidate_bundle_handoff(
+                bundles_root,
+                output_dir,
+                include_publishable_in_review=bool(
+                    arguments.get("include_publishable_in_review", False)
+                ),
+                open_pull_request=bool(arguments.get("open_pull_request", False)),
+                base_branch=str(arguments.get("base_branch", "main")),
+                draft_pull_request=bool(arguments.get("draft_pull_request", False)),
+                labels=[str(label) for label in arguments.get("labels", [])],
+                reviewers=[str(reviewer) for reviewer in arguments.get("reviewers", [])],
+                use_temp_worktree=bool(arguments.get("use_temp_worktree", False)),
+                worktree_root=(
+                    str(arguments["worktree_root"])
+                    if arguments.get("worktree_root") is not None
+                    else None
+                ),
+            )
+            if not handoff_publication:
+                return json.dumps(
+                    {
+                        "success": False,
+                        "error": f"Candidate bundle directory '{bundles_root}' not found",
+                    }
+                )
+            return json.dumps(handoff_publication.model_dump(), indent=2, default=str)
 
         if name == "prepare_candidate_bundle_submission":
             bundle_path = str(arguments.get("path", ""))

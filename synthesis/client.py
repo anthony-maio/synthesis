@@ -17,6 +17,7 @@ from typing import Any, Dict, List, Optional
 from synthesis.core.models import (
     CandidateBundleBlockerQueue,
     CandidateBundleHarvestHandoff,
+    CandidateBundleHarvestPublication,
     CandidateBundleInspection,
     CandidateBundleNextAction,
     CandidateBundlePublicationBatch,
@@ -768,6 +769,48 @@ class SynthesisClient:
             ready_candidates=ready_queue.total_candidates,
             ready_bundle_paths=[item.bundle_path for item in ready_queue.candidates],
             ready_summary_markdown=ready_summary_markdown,
+        )
+
+    def publish_candidate_bundle_handoff(
+        self,
+        bundles_root: str,
+        output_dir: str,
+        *,
+        include_publishable_in_review: bool = False,
+        open_pull_request: bool = False,
+        base_branch: str = "main",
+        draft_pull_request: bool = False,
+        labels: Optional[List[str]] = None,
+        reviewers: Optional[List[str]] = None,
+        use_temp_worktree: bool = False,
+        worktree_root: Optional[str] = None,
+    ) -> Optional[CandidateBundleHarvestPublication]:
+        """Write handoff artifacts, then publish the ready subset from the same harvest."""
+        handoff = self.write_candidate_bundle_handoff(
+            bundles_root,
+            output_dir,
+            include_publishable_in_review=include_publishable_in_review,
+        )
+        if not handoff:
+            return None
+
+        publication_batch = self.publish_candidate_bundle_directory(
+            bundles_root,
+            action=CandidateBundleNextAction.READY_TO_PUBLISH,
+            open_pull_request=open_pull_request,
+            base_branch=base_branch,
+            draft_pull_request=draft_pull_request,
+            labels=labels,
+            reviewers=reviewers,
+            use_temp_worktree=use_temp_worktree,
+            worktree_root=worktree_root,
+        )
+        if not publication_batch:
+            return None
+
+        return CandidateBundleHarvestPublication(
+            handoff=handoff,
+            publication_batch=publication_batch,
         )
 
     def inspect_candidate_bundle_publishability(

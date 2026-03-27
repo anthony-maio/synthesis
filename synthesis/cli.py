@@ -91,6 +91,21 @@ def build_parser() -> argparse.ArgumentParser:
     write_handoff.add_argument("output_dir")
     write_handoff.add_argument("--include-ready-in-review", action="store_true")
 
+    publish_handoff = subparsers.add_parser(
+        "publish-candidate-bundle-handoff",
+        help="Write curator handoff artifacts and publish the ready subset.",
+    )
+    publish_handoff.add_argument("path")
+    publish_handoff.add_argument("output_dir")
+    publish_handoff.add_argument("--include-ready-in-review", action="store_true")
+    publish_handoff.add_argument("--open-pull-request", action="store_true")
+    publish_handoff.add_argument("--base-branch", default="main")
+    publish_handoff.add_argument("--draft-pull-request", action="store_true")
+    publish_handoff.add_argument("--label", action="append", default=[])
+    publish_handoff.add_argument("--reviewer", action="append", default=[])
+    publish_handoff.add_argument("--use-temp-worktree", action="store_true")
+    publish_handoff.add_argument("--worktree-root")
+
     prepare_bundle_submission = subparsers.add_parser(
         "prepare-candidate-bundle-submission",
         help="Return a PR-ready submission envelope for a miner-produced challenger bundle.",
@@ -244,6 +259,25 @@ async def run_command(args: argparse.Namespace) -> Any:
         return (
             handoff.model_dump()
             if handoff
+            else {"success": False, "error": "candidate bundle directory not found or invalid"}
+        )
+
+    if args.command == "publish-candidate-bundle-handoff":
+        handoff_publication = client.publish_candidate_bundle_handoff(
+            args.path,
+            args.output_dir,
+            include_publishable_in_review=args.include_ready_in_review,
+            open_pull_request=args.open_pull_request,
+            base_branch=args.base_branch,
+            draft_pull_request=args.draft_pull_request,
+            labels=args.label,
+            reviewers=args.reviewer,
+            use_temp_worktree=args.use_temp_worktree,
+            worktree_root=args.worktree_root,
+        )
+        return (
+            handoff_publication.model_dump()
+            if handoff_publication
             else {"success": False, "error": "candidate bundle directory not found or invalid"}
         )
 

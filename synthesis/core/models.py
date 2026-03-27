@@ -395,6 +395,13 @@ class CandidateBundleHarvestHandoff(BaseModel):
     ready_summary_markdown: str
 
 
+class CandidateBundleHarvestPublication(BaseModel):
+    """Combined handoff export and ready-to-publish batch result."""
+
+    handoff: CandidateBundleHarvestHandoff
+    publication_batch: "CandidateBundlePublicationBatch"
+
+
 class SkillDraft(BaseModel):
     """Draft skill package produced by synthesis."""
 

@@ -415,6 +415,7 @@ async def test_client_uses_default_canonical_registry_from_environment(
 @pytest.mark.asyncio
 async def test_mcp_server_exposes_skill_management_tools(
     skill_roots: tuple[Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     canonical_root, install_root = skill_roots
     _write_skill(
@@ -460,6 +461,7 @@ async def test_mcp_server_exposes_skill_management_tools(
         "inspect_skill",
         "inspect_candidate_bundle",
         "write_candidate_bundle_handoff",
+        "publish_candidate_bundle_handoff",
         "inspect_candidate_bundle_detail",
         "inspect_candidate_bundle_directory",
         "inspect_candidate_bundle_blockers",
@@ -574,6 +576,31 @@ async def test_mcp_server_exposes_skill_management_tools(
     assert handoff_payload["curator_comment_path"].endswith("curator-comment.md")
     assert handoff_payload["ready_summary_path"].endswith("ready-to-publish.md")
     assert handoff_payload["ready_candidates"] == 1
+
+    def fake_publish(bundle_path: str, **kwargs: object) -> SubmissionAutomationResult:
+        del kwargs
+        assert bundle_path.endswith("review-bundle")
+        return SubmissionAutomationResult(
+            success=True,
+            branch="synthesis/review-bundle",
+            target_repo_root=str(canonical_root),
+        )
+
+    monkeypatch.setattr(client, "publish_candidate_bundle_submission", fake_publish)
+
+    publish_handoff_response = await server.call_tool(
+        "publish_candidate_bundle_handoff",
+        {
+            "path": str(canonical_root / "candidate-bundles"),
+            "output_dir": str(canonical_root / "candidate-handoff-publish"),
+            "use_temp_worktree": True,
+            "worktree_root": str(canonical_root / "worktrees"),
+        },
+    )
+    publish_handoff_payload = json.loads(publish_handoff_response)
+
+    assert publish_handoff_payload["handoff"]["curator_comment_path"].endswith("curator-comment.md")
+    assert publish_handoff_payload["publication_batch"]["published_candidates"] == 1
 
     envelope_response = await server.call_tool(
         "prepare_candidate_bundle_submission",
@@ -1850,6 +1877,65 @@ def test_write_candidate_bundle_handoff_exports_review_and_ready_summary(
     assert "## Candidate Curation Review" in (output_dir / "curator-comment.md").read_text(encoding="utf-8")
     assert "ready-bundle" in (output_dir / "ready-to-publish.md").read_text(encoding="utf-8")
     assert "stale-bundle" not in (output_dir / "ready-to-publish.md").read_text(encoding="utf-8")
+
+
+def test_publish_candidate_bundle_handoff_writes_artifacts_and_publishes_ready_subset(
+    skill_roots: tuple[Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    canonical_root, install_root = skill_roots
+    _write_skill(
+        canonical_root,
+        name="repo-surveyor",
+        description="Canonical repo survey skill.",
+        keywords=["repo", "survey"],
+    )
+    _write_catalog(
+        canonical_root,
+        [_repo_surveyor_catalog_entry()],
+        snapshot_version="snapshot-2026-03-24",
+    )
+    bundles_root = canonical_root / "candidate-bundles"
+    _write_candidate_bundle(
+        bundles_root,
+        name="ready-bundle",
+        description="Use when a ready bundle should be published by the combined handoff flow.",
+        registry_overrides={"registry_snapshot_version": "snapshot-2026-03-24"},
+    )
+    _write_candidate_bundle(
+        bundles_root,
+        name="stale-bundle",
+        description="Use when a stale bundle should stay out of the combined publish flow.",
+    )
+    output_dir = canonical_root / "handoff-publish"
+
+    client = SynthesisClient(
+        provider_type="mock",
+        canonical_repo_path=str(canonical_root),
+        host_root=str(install_root),
+    )
+
+    def fake_publish(bundle_path: str, **kwargs: object) -> SubmissionAutomationResult:
+        del kwargs
+        assert bundle_path.endswith("ready-bundle")
+        return SubmissionAutomationResult(
+            success=True,
+            branch="synthesis/ready-bundle",
+            target_repo_root=str(canonical_root),
+        )
+
+    monkeypatch.setattr(client, "publish_candidate_bundle_submission", fake_publish)
+
+    result = client.publish_candidate_bundle_handoff(
+        str(bundles_root),
+        str(output_dir),
+    )
+
+    assert result is not None
+    assert result.handoff.curator_comment_path == str(output_dir / "curator-comment.md")
+    assert result.publication_batch.published_candidates == 1
+    assert result.publication_batch.failed_candidates == 0
+    assert result.publication_batch.results[0].skill_name == "ready-bundle"
 
 
 def test_validate_candidate_bundle_rejects_missing_variant_context(
