@@ -470,6 +470,7 @@ async def test_mcp_server_exposes_skill_management_tools(
         "publish_candidate_bundle_submission",
         "review_candidate_bundle_directory",
         "validate_candidate_bundle",
+        "write_candidate_bundle_review_report",
         "submit_candidate_bundle",
         "submit_skill",
     }
@@ -544,6 +545,19 @@ async def test_mcp_server_exposes_skill_management_tools(
     assert report_payload["included_candidates"] == 1
     assert report_payload["include_publishable"] is True
     assert report_payload["sections"][0]["action"] == "ready_to_publish"
+
+    export_response = await server.call_tool(
+        "write_candidate_bundle_review_report",
+        {
+            "path": str(canonical_root / "candidate-bundles"),
+            "output_path": str(canonical_root / "candidate-report.md"),
+            "include_publishable": True,
+        },
+    )
+    export_payload = json.loads(export_response)
+
+    assert export_payload["output_path"].endswith("candidate-report.md")
+    assert export_payload["bytes_written"] > 0
 
     envelope_response = await server.call_tool(
         "prepare_candidate_bundle_submission",
@@ -1724,6 +1738,50 @@ def test_review_candidate_bundle_directory_can_include_publishable_candidates(
     assert report.include_publishable is True
     assert [section.action for section in report.sections] == ["ready_to_publish"]
     assert report.sections[0].candidates[0].skill_name == "ready-bundle"
+
+
+def test_write_candidate_bundle_review_report_exports_markdown(
+    skill_roots: tuple[Path, Path],
+) -> None:
+    canonical_root, install_root = skill_roots
+    _write_skill(
+        canonical_root,
+        name="repo-surveyor",
+        description="Canonical repo survey skill.",
+        keywords=["repo", "survey"],
+    )
+    _write_catalog(
+        canonical_root,
+        [_repo_surveyor_catalog_entry()],
+        snapshot_version="snapshot-2026-03-24",
+    )
+    bundles_root = canonical_root / "candidate-bundles"
+    _write_candidate_bundle(
+        bundles_root,
+        name="ready-bundle",
+        description="Use when a ready bundle should be written into the exported report.",
+        registry_overrides={"registry_snapshot_version": "snapshot-2026-03-24"},
+    )
+    output_path = canonical_root / "review-report.md"
+
+    client = SynthesisClient(
+        provider_type="mock",
+        canonical_repo_path=str(canonical_root),
+        host_root=str(install_root),
+    )
+
+    export = client.write_candidate_bundle_review_report(
+        str(bundles_root),
+        str(output_path),
+        include_publishable=True,
+    )
+
+    assert export is not None
+    assert export.output_path == str(output_path)
+    assert export.bytes_written == output_path.stat().st_size
+    assert export.report.include_publishable is True
+    assert "# Candidate Review Report" in output_path.read_text(encoding="utf-8")
+    assert "ready-bundle" in output_path.read_text(encoding="utf-8")
 
 
 def test_validate_candidate_bundle_rejects_missing_variant_context(

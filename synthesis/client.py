@@ -23,6 +23,7 @@ from synthesis.core.models import (
     CandidateBundlePublishability,
     CandidateBundleReview,
     CandidateBundleReviewerReport,
+    CandidateBundleReviewerReportExport,
     CandidateBundleReviewerReportItem,
     CandidateBundleReviewerReportSection,
     CandidateBundleReviewQueue,
@@ -641,6 +642,33 @@ class SynthesisClient:
                 include_publishable=include_publishable,
                 sections=sections,
             ),
+        )
+
+    def write_candidate_bundle_review_report(
+        self,
+        bundles_root: str,
+        output_path: str,
+        *,
+        include_publishable: bool = False,
+    ) -> Optional[CandidateBundleReviewerReportExport]:
+        """Write a reviewer report markdown artifact for one candidate bundle directory."""
+        report = self.review_candidate_bundle_directory(
+            bundles_root,
+            include_publishable=include_publishable,
+        )
+        if not report:
+            return None
+
+        destination = Path(output_path)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        payload = report.report_markdown
+        destination.write_text(payload, encoding="utf-8")
+        bytes_written = destination.stat().st_size
+
+        return CandidateBundleReviewerReportExport(
+            output_path=str(destination),
+            bytes_written=bytes_written,
+            report=report,
         )
 
     def inspect_candidate_bundle_publishability(

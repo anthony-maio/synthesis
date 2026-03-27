@@ -371,6 +371,14 @@ class CandidateBundleReviewerReport(BaseModel):
     report_markdown: str
 
 
+class CandidateBundleReviewerReportExport(BaseModel):
+    """Export result for a written reviewer report artifact."""
+
+    output_path: str
+    bytes_written: int
+    report: CandidateBundleReviewerReport
+
+
 class SkillDraft(BaseModel):
     """Draft skill package produced by synthesis."""
 
