@@ -571,6 +571,7 @@ async def test_mcp_server_exposes_skill_management_tools(
     handoff_payload = json.loads(handoff_response)
 
     assert handoff_payload["review_report"]["output_path"].endswith("candidate-review-report.md")
+    assert handoff_payload["curator_comment_path"].endswith("curator-comment.md")
     assert handoff_payload["ready_summary_path"].endswith("ready-to-publish.md")
     assert handoff_payload["ready_candidates"] == 1
 
@@ -1842,9 +1843,11 @@ def test_write_candidate_bundle_handoff_exports_review_and_ready_summary(
     assert handoff is not None
     assert handoff.output_dir == str(output_dir)
     assert handoff.review_report.output_path == str(output_dir / "candidate-review-report.md")
+    assert handoff.curator_comment_path == str(output_dir / "curator-comment.md")
     assert handoff.ready_summary_path == str(output_dir / "ready-to-publish.md")
     assert handoff.ready_candidates == 1
     assert handoff.ready_bundle_paths == [str(bundles_root / "ready-bundle")]
+    assert "## Candidate Curation Review" in (output_dir / "curator-comment.md").read_text(encoding="utf-8")
     assert "ready-bundle" in (output_dir / "ready-to-publish.md").read_text(encoding="utf-8")
     assert "stale-bundle" not in (output_dir / "ready-to-publish.md").read_text(encoding="utf-8")
 

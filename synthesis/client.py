@@ -183,6 +183,35 @@ def _render_publish_ready_summary(queue: CandidateBundleReviewQueue) -> str:
     return "\n".join(lines)
 
 
+def _render_curator_comment(report: CandidateBundleReviewerReport) -> str:
+    """Render a paste-ready curator comment body from one reviewer report."""
+    lines = [
+        "## Candidate Curation Review",
+        "",
+        f"- Scanned candidates: {report.scanned_candidates}",
+        f"- Included candidates: {report.included_candidates}",
+        f"- Include publishable: {'yes' if report.include_publishable else 'no'}",
+        "",
+    ]
+    if not report.sections:
+        lines.append("No candidates matched the current curation scope.")
+        return "\n".join(lines)
+
+    for section in report.sections:
+        lines.append(f"### {_humanize_candidate_action(section.action)} ({section.count})")
+        lines.append("")
+        for item in section.candidates:
+            lines.append(f"- `{item.skill_name}`")
+            lines.append(f"  - Headline: {item.headline}")
+            lines.append(f"  - Path: `{item.bundle_path}`")
+            if item.blocked_reason:
+                lines.append(f"  - Blocked reason: `{item.blocked_reason}`")
+            if item.validation_errors:
+                lines.append(f"  - First validation error: {item.validation_errors[0]}")
+        lines.append("")
+    return "\n".join(lines).rstrip()
+
+
 class ResolutionMethod(Enum):
     """How skill acquisition was resolved."""
 
@@ -710,6 +739,11 @@ class SynthesisClient:
         if not review_report:
             return None
 
+        curator_comment_markdown = _render_curator_comment(review_report.report)
+        curator_comment_path = destination / "curator-comment.md"
+        curator_comment_path.write_text(curator_comment_markdown, encoding="utf-8")
+        curator_comment_bytes_written = curator_comment_path.stat().st_size
+
         ready_queue = self.inspect_candidate_bundle_directory(
             bundles_root,
             action=CandidateBundleNextAction.READY_TO_PUBLISH,
@@ -726,6 +760,9 @@ class SynthesisClient:
             root_path=str(Path(bundles_root)),
             output_dir=str(destination),
             review_report=review_report,
+            curator_comment_path=str(curator_comment_path),
+            curator_comment_bytes_written=curator_comment_bytes_written,
+            curator_comment_markdown=curator_comment_markdown,
             ready_summary_path=str(ready_summary_path),
             ready_summary_bytes_written=ready_summary_bytes_written,
             ready_candidates=ready_queue.total_candidates,

@@ -385,6 +385,9 @@ class CandidateBundleHarvestHandoff(BaseModel):
     root_path: str
     output_dir: str
     review_report: CandidateBundleReviewerReportExport
+    curator_comment_path: str
+    curator_comment_bytes_written: int
+    curator_comment_markdown: str
     ready_summary_path: str
     ready_summary_bytes_written: int
     ready_candidates: int

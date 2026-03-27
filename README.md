@@ -135,7 +135,7 @@ synthesis submit-candidate-bundle ./candidate-bundle
 synthesis install-candidate-bundle ./candidate-bundle --allow-challengers
 ```
 
-Candidate bundle detail and review outputs include both publishability and a deterministic `recommended_next_action`, the directory/blocker queue views expose `action_counts` plus optional action filtering, the reviewer report produces a compact grouped worklist with markdown output for non-publishable actions by default, `write-candidate-bundle-review-report` persists that worklist as a markdown artifact, `write-candidate-bundle-handoff` writes both the curator report and a ready-to-publish summary, and the directory publish flow can batch only the candidates that are already `ready_to_publish`.
+Candidate bundle detail and review outputs include both publishability and a deterministic `recommended_next_action`, the directory/blocker queue views expose `action_counts` plus optional action filtering, the reviewer report produces a compact grouped worklist with markdown output for non-publishable actions by default, `write-candidate-bundle-review-report` persists that worklist as a markdown artifact, `write-candidate-bundle-handoff` writes the curator report, a paste-ready curator comment body, and a ready-to-publish summary, and the directory publish flow can batch only the candidates that are already `ready_to_publish`.
 
 ## Development
 
