@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional
 
 from synthesis.core.models import (
     CandidateBundleBlockerQueue,
+    CandidateBundleHarvestHandoff,
     CandidateBundleInspection,
     CandidateBundleNextAction,
     CandidateBundlePublicationBatch,
@@ -161,6 +162,25 @@ def _render_candidate_reviewer_report(
                 lines.append(f"  First issue: {item.validation_errors[0]}")
         lines.append("")
     return "\n".join(lines).rstrip()
+
+
+def _render_publish_ready_summary(queue: CandidateBundleReviewQueue) -> str:
+    """Render a compact markdown summary for ready-to-publish candidates."""
+    lines = [
+        "# Ready To Publish",
+        "",
+        f"- Scanned candidates: {queue.scanned_candidates}",
+        f"- Ready candidates: {queue.total_candidates}",
+        "",
+    ]
+    if not queue.candidates:
+        lines.append("No candidates are currently ready to publish.")
+        return "\n".join(lines)
+
+    for item in queue.candidates:
+        lines.append(f"- `{item.review.skill_name}`: {item.review.headline}")
+        lines.append(f"  Path: `{item.bundle_path}`")
+    return "\n".join(lines)
 
 
 class ResolutionMethod(Enum):
@@ -669,6 +689,48 @@ class SynthesisClient:
             output_path=str(destination),
             bytes_written=bytes_written,
             report=report,
+        )
+
+    def write_candidate_bundle_handoff(
+        self,
+        bundles_root: str,
+        output_dir: str,
+        *,
+        include_publishable_in_review: bool = False,
+    ) -> Optional[CandidateBundleHarvestHandoff]:
+        """Write both curator review and ready-to-publish handoff artifacts."""
+        destination = Path(output_dir)
+        destination.mkdir(parents=True, exist_ok=True)
+
+        review_report = self.write_candidate_bundle_review_report(
+            bundles_root,
+            str(destination / "candidate-review-report.md"),
+            include_publishable=include_publishable_in_review,
+        )
+        if not review_report:
+            return None
+
+        ready_queue = self.inspect_candidate_bundle_directory(
+            bundles_root,
+            action=CandidateBundleNextAction.READY_TO_PUBLISH,
+        )
+        if not ready_queue:
+            return None
+
+        ready_summary_markdown = _render_publish_ready_summary(ready_queue)
+        ready_summary_path = destination / "ready-to-publish.md"
+        ready_summary_path.write_text(ready_summary_markdown, encoding="utf-8")
+        ready_summary_bytes_written = ready_summary_path.stat().st_size
+
+        return CandidateBundleHarvestHandoff(
+            root_path=str(Path(bundles_root)),
+            output_dir=str(destination),
+            review_report=review_report,
+            ready_summary_path=str(ready_summary_path),
+            ready_summary_bytes_written=ready_summary_bytes_written,
+            ready_candidates=ready_queue.total_candidates,
+            ready_bundle_paths=[item.bundle_path for item in ready_queue.candidates],
+            ready_summary_markdown=ready_summary_markdown,
         )
 
     def inspect_candidate_bundle_publishability(

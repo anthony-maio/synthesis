@@ -379,6 +379,19 @@ class CandidateBundleReviewerReportExport(BaseModel):
     report: CandidateBundleReviewerReport
 
 
+class CandidateBundleHarvestHandoff(BaseModel):
+    """Written handoff artifacts for one harvested candidate bundle directory."""
+
+    root_path: str
+    output_dir: str
+    review_report: CandidateBundleReviewerReportExport
+    ready_summary_path: str
+    ready_summary_bytes_written: int
+    ready_candidates: int
+    ready_bundle_paths: List[str] = Field(default_factory=list)
+    ready_summary_markdown: str
+
+
 class SkillDraft(BaseModel):
     """Draft skill package produced by synthesis."""
 

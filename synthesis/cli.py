@@ -83,6 +83,14 @@ def build_parser() -> argparse.ArgumentParser:
     write_review_report.add_argument("output_path")
     write_review_report.add_argument("--include-ready", action="store_true")
 
+    write_handoff = subparsers.add_parser(
+        "write-candidate-bundle-handoff",
+        help="Write curator handoff artifacts for a directory of challenger bundles.",
+    )
+    write_handoff.add_argument("path")
+    write_handoff.add_argument("output_dir")
+    write_handoff.add_argument("--include-ready-in-review", action="store_true")
+
     prepare_bundle_submission = subparsers.add_parser(
         "prepare-candidate-bundle-submission",
         help="Return a PR-ready submission envelope for a miner-produced challenger bundle.",
@@ -224,6 +232,18 @@ async def run_command(args: argparse.Namespace) -> Any:
         return (
             export.model_dump()
             if export
+            else {"success": False, "error": "candidate bundle directory not found or invalid"}
+        )
+
+    if args.command == "write-candidate-bundle-handoff":
+        handoff = client.write_candidate_bundle_handoff(
+            args.path,
+            args.output_dir,
+            include_publishable_in_review=args.include_ready_in_review,
+        )
+        return (
+            handoff.model_dump()
+            if handoff
             else {"success": False, "error": "candidate bundle directory not found or invalid"}
         )
 

@@ -459,6 +459,7 @@ async def test_mcp_server_exposes_skill_management_tools(
         "acquire_skill",
         "inspect_skill",
         "inspect_candidate_bundle",
+        "write_candidate_bundle_handoff",
         "inspect_candidate_bundle_detail",
         "inspect_candidate_bundle_directory",
         "inspect_candidate_bundle_blockers",
@@ -558,6 +559,20 @@ async def test_mcp_server_exposes_skill_management_tools(
 
     assert export_payload["output_path"].endswith("candidate-report.md")
     assert export_payload["bytes_written"] > 0
+
+    handoff_response = await server.call_tool(
+        "write_candidate_bundle_handoff",
+        {
+            "path": str(canonical_root / "candidate-bundles"),
+            "output_dir": str(canonical_root / "candidate-handoff"),
+            "include_publishable_in_review": True,
+        },
+    )
+    handoff_payload = json.loads(handoff_response)
+
+    assert handoff_payload["review_report"]["output_path"].endswith("candidate-review-report.md")
+    assert handoff_payload["ready_summary_path"].endswith("ready-to-publish.md")
+    assert handoff_payload["ready_candidates"] == 1
 
     envelope_response = await server.call_tool(
         "prepare_candidate_bundle_submission",
@@ -1782,6 +1797,56 @@ def test_write_candidate_bundle_review_report_exports_markdown(
     assert export.report.include_publishable is True
     assert "# Candidate Review Report" in output_path.read_text(encoding="utf-8")
     assert "ready-bundle" in output_path.read_text(encoding="utf-8")
+
+
+def test_write_candidate_bundle_handoff_exports_review_and_ready_summary(
+    skill_roots: tuple[Path, Path],
+) -> None:
+    canonical_root, install_root = skill_roots
+    _write_skill(
+        canonical_root,
+        name="repo-surveyor",
+        description="Canonical repo survey skill.",
+        keywords=["repo", "survey"],
+    )
+    _write_catalog(
+        canonical_root,
+        [_repo_surveyor_catalog_entry()],
+        snapshot_version="snapshot-2026-03-24",
+    )
+    bundles_root = canonical_root / "candidate-bundles"
+    _write_candidate_bundle(
+        bundles_root,
+        name="ready-bundle",
+        description="Use when a ready bundle should be included in the ready summary.",
+        registry_overrides={"registry_snapshot_version": "snapshot-2026-03-24"},
+    )
+    _write_candidate_bundle(
+        bundles_root,
+        name="stale-bundle",
+        description="Use when a stale bundle should stay out of the ready summary.",
+    )
+    output_dir = canonical_root / "handoff"
+
+    client = SynthesisClient(
+        provider_type="mock",
+        canonical_repo_path=str(canonical_root),
+        host_root=str(install_root),
+    )
+
+    handoff = client.write_candidate_bundle_handoff(
+        str(bundles_root),
+        str(output_dir),
+    )
+
+    assert handoff is not None
+    assert handoff.output_dir == str(output_dir)
+    assert handoff.review_report.output_path == str(output_dir / "candidate-review-report.md")
+    assert handoff.ready_summary_path == str(output_dir / "ready-to-publish.md")
+    assert handoff.ready_candidates == 1
+    assert handoff.ready_bundle_paths == [str(bundles_root / "ready-bundle")]
+    assert "ready-bundle" in (output_dir / "ready-to-publish.md").read_text(encoding="utf-8")
+    assert "stale-bundle" not in (output_dir / "ready-to-publish.md").read_text(encoding="utf-8")
 
 
 def test_validate_candidate_bundle_rejects_missing_variant_context(

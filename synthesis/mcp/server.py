@@ -124,6 +124,19 @@ class SynthesisMCPServer:
                 },
             },
             {
+                "name": "write_candidate_bundle_handoff",
+                "description": "Write curator handoff artifacts for a directory of challenger bundles.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "path": {"type": "string"},
+                        "output_dir": {"type": "string"},
+                        "include_publishable_in_review": {"type": "boolean"},
+                    },
+                    "required": ["path", "output_dir"],
+                },
+            },
+            {
                 "name": "prepare_candidate_bundle_submission",
                 "description": "Return a PR-ready submission envelope for a challenger bundle.",
                 "inputSchema": {
@@ -324,6 +337,25 @@ class SynthesisMCPServer:
                     }
                 )
             return json.dumps(export.model_dump(), indent=2, default=str)
+
+        if name == "write_candidate_bundle_handoff":
+            bundles_root = str(arguments.get("path", ""))
+            output_dir = str(arguments.get("output_dir", ""))
+            handoff = self.client.write_candidate_bundle_handoff(
+                bundles_root,
+                output_dir,
+                include_publishable_in_review=bool(
+                    arguments.get("include_publishable_in_review", False)
+                ),
+            )
+            if not handoff:
+                return json.dumps(
+                    {
+                        "success": False,
+                        "error": f"Candidate bundle directory '{bundles_root}' not found",
+                    }
+                )
+            return json.dumps(handoff.model_dump(), indent=2, default=str)
 
         if name == "prepare_candidate_bundle_submission":
             bundle_path = str(arguments.get("path", ""))

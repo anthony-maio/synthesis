@@ -30,6 +30,7 @@ from synthesis.client import (
 )
 from synthesis.core.models import (
     CandidateBundleBlockerQueue,
+    CandidateBundleHarvestHandoff,
     CandidateBundleInspection,
     CandidateBundleNextAction,
     CandidateBundlePublicationBatch,
@@ -74,6 +75,7 @@ __all__ = [
     "Capability",
     "CapabilityCategory",
     "CandidateBundleBlockerQueue",
+    "CandidateBundleHarvestHandoff",
     "CandidateBundleInspection",
     "CandidateBundleNextAction",
     "CandidateBundlePublicationBatch",
