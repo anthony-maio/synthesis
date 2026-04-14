@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import json
 import os
 import re
@@ -51,6 +52,32 @@ SYNONYM_MAP = {
 DEFAULT_CANONICAL_REPO_SLUG = "anthony-maio/synthesis-skills"
 DEFAULT_CANONICAL_REPO_URL = f"https://github.com/{DEFAULT_CANONICAL_REPO_SLUG}.git"
 DEFAULT_CANONICAL_REPO_DIRNAME = "synthesis-skills"
+NEXUS_EXTENSION_NAMESPACE = "nexus"
+SIDECAR_RUNTIME_KEYS = (
+    "trust_level",
+    "source_type",
+    "repo",
+    "upstream",
+    "install_state",
+    "lifecycle_stage",
+    "capability_family",
+    "is_primary",
+    "variant_of",
+    "variant_reason",
+    "supersedes",
+    "submission_type",
+    "nearest_canonical",
+    "evidence_summary",
+    "family_confidence",
+    "disposition_confidence",
+    "disposition_reason_codes",
+    "registry_snapshot_version",
+    "license_status",
+    "license_expression",
+    "packaging_allowed",
+    "source_commit",
+    "source_fingerprint",
+)
 
 
 def default_canonical_repo_path() -> Path:
@@ -240,6 +267,7 @@ def build_skill_record(
     packaging_allowed: Optional[bool] = None,
     source_commit: Optional[str] = None,
     source_fingerprint: Optional[str] = None,
+    extensions: Optional[Dict[str, object]] = None,
     score: float = 0.0,
 ) -> SkillRecord:
     """Construct a skill record with normalized values."""
@@ -275,6 +303,7 @@ def build_skill_record(
         license_status=license_status,
         license_expression=license_expression,
         packaging_allowed=packaging_allowed,
+        extensions=copy.deepcopy(extensions or {}),
         relative_path=relative_path,
         install_path=str(Path(install_root) / name) if install_root else None,
         score=score,
@@ -293,6 +322,100 @@ def _coerce_binary_content(content: str | bytes) -> bytes:
     if isinstance(content, bytes):
         return content
     return content.encode("utf-8")
+
+
+def _coerce_extensions(value: object) -> Dict[str, object]:
+    """Return a JSON-compatible extensions mapping."""
+    if isinstance(value, dict):
+        return copy.deepcopy(value)
+    return {}
+
+
+def _nexus_extension_payload(payload: Dict[str, object]) -> Dict[str, object]:
+    """Return the Nexus extension block if it exists."""
+    extensions = payload.get("extensions")
+    if not isinstance(extensions, dict):
+        return {}
+    nexus = extensions.get(NEXUS_EXTENSION_NAMESPACE)
+    if not isinstance(nexus, dict):
+        return {}
+    return nexus
+
+
+def _normalize_install_metadata(payload: Dict[str, object]) -> Dict[str, object]:
+    """Normalize sidecar metadata and prefer the Nexus namespaced contract."""
+    normalized = copy.deepcopy(payload)
+    extensions = _coerce_extensions(normalized.get("extensions"))
+    normalized["extensions"] = extensions
+
+    nexus = _nexus_extension_payload({"extensions": extensions})
+    for key in SIDECAR_RUNTIME_KEYS:
+        if key in nexus:
+            normalized[key] = copy.deepcopy(nexus[key])
+
+    return normalized
+
+
+def _build_install_metadata_payload(
+    *,
+    trust_level: TrustLevel,
+    source_type: SkillSourceType,
+    repo: Optional[str],
+    upstream: Optional[str],
+    install_state: SkillInstallState,
+    lifecycle_stage: SkillLifecycleStage,
+    capability_family: str,
+    is_primary: bool,
+    variant_of: Optional[str],
+    variant_reason: Optional[str],
+    supersedes: Optional[List[str]],
+    submission_type: Optional[str],
+    nearest_canonical: Optional[str],
+    evidence_summary: Optional[str],
+    family_confidence: Optional[float],
+    disposition_confidence: Optional[float],
+    disposition_reason_codes: Optional[List[str]],
+    registry_snapshot_version: Optional[str],
+    license_status: Optional[str],
+    license_expression: Optional[str],
+    packaging_allowed: Optional[bool],
+    source_commit: Optional[str],
+    source_fingerprint: Optional[str],
+    extensions: Optional[Dict[str, object]] = None,
+) -> Dict[str, object]:
+    """Render the local .synthesis.json payload with a namespaced Nexus contract."""
+    payload: Dict[str, object] = {
+        "trust_level": trust_level.value,
+        "source_type": source_type.value,
+        "repo": repo,
+        "upstream": upstream,
+        "install_state": install_state.value,
+        "lifecycle_stage": lifecycle_stage.value,
+        "capability_family": capability_family,
+        "is_primary": is_primary,
+        "variant_of": variant_of,
+        "variant_reason": variant_reason,
+        "supersedes": supersedes or [],
+        "submission_type": submission_type,
+        "nearest_canonical": nearest_canonical,
+        "evidence_summary": evidence_summary,
+        "family_confidence": family_confidence,
+        "disposition_confidence": disposition_confidence,
+        "disposition_reason_codes": disposition_reason_codes or [],
+        "registry_snapshot_version": registry_snapshot_version,
+        "license_status": license_status,
+        "license_expression": license_expression,
+        "packaging_allowed": packaging_allowed,
+        "source_commit": source_commit,
+        "source_fingerprint": source_fingerprint,
+    }
+    extension_payload = _coerce_extensions(extensions)
+    nexus_payload = _coerce_extensions(extension_payload.get(NEXUS_EXTENSION_NAMESPACE))
+    for key in SIDECAR_RUNTIME_KEYS:
+        nexus_payload[key] = copy.deepcopy(payload[key])
+    extension_payload[NEXUS_EXTENSION_NAMESPACE] = nexus_payload
+    payload["extensions"] = extension_payload
+    return payload
 
 
 class LocalSkillRepository:
@@ -373,6 +496,7 @@ class LocalSkillRepository:
                     source_fingerprint=_coerce_optional(
                         install_metadata.get("source_fingerprint")
                     ),
+                    extensions=_coerce_extensions(install_metadata.get("extensions")),
                 )
             )
         return skills
@@ -412,6 +536,7 @@ class LocalSkillRepository:
         packaging_allowed: Optional[bool] = None,
         source_commit: Optional[str] = None,
         source_fingerprint: Optional[str] = None,
+        extensions: Optional[Dict[str, object]] = None,
     ) -> SkillRecord:
         """Install a synthesized or copied skill into the host root."""
         target_dir = self.root / name
@@ -424,36 +549,35 @@ class LocalSkillRepository:
             file_path.parent.mkdir(parents=True, exist_ok=True)
             file_path.write_bytes(_coerce_binary_content(content))
 
+        metadata_payload = _build_install_metadata_payload(
+            trust_level=trust_level,
+            source_type=source_type,
+            repo=repo,
+            upstream=upstream,
+            install_state=install_state,
+            lifecycle_stage=lifecycle_stage,
+            capability_family=capability_family or name,
+            is_primary=is_primary,
+            variant_of=variant_of,
+            variant_reason=variant_reason,
+            supersedes=supersedes,
+            submission_type=submission_type,
+            nearest_canonical=nearest_canonical,
+            evidence_summary=evidence_summary,
+            family_confidence=family_confidence,
+            disposition_confidence=disposition_confidence,
+            disposition_reason_codes=disposition_reason_codes,
+            registry_snapshot_version=registry_snapshot_version,
+            license_status=license_status,
+            license_expression=license_expression,
+            packaging_allowed=packaging_allowed,
+            source_commit=source_commit,
+            source_fingerprint=source_fingerprint,
+            extensions=extensions,
+        )
         metadata_path = target_dir / ".synthesis.json"
         metadata_path.write_text(
-            json.dumps(
-                {
-                    "trust_level": trust_level.value,
-                    "source_type": source_type.value,
-                    "repo": repo,
-                    "upstream": upstream,
-                    "install_state": install_state.value,
-                    "lifecycle_stage": lifecycle_stage.value,
-                    "capability_family": capability_family or name,
-                    "is_primary": is_primary,
-                    "variant_of": variant_of,
-                    "variant_reason": variant_reason,
-                    "supersedes": supersedes or [],
-                    "submission_type": submission_type,
-                    "nearest_canonical": nearest_canonical,
-                    "evidence_summary": evidence_summary,
-                    "family_confidence": family_confidence,
-                    "disposition_confidence": disposition_confidence,
-                    "disposition_reason_codes": disposition_reason_codes or [],
-                    "registry_snapshot_version": registry_snapshot_version,
-                    "license_status": license_status,
-                    "license_expression": license_expression,
-                    "packaging_allowed": packaging_allowed,
-                    "source_commit": source_commit,
-                    "source_fingerprint": source_fingerprint,
-                },
-                indent=2,
-            ),
+            json.dumps(metadata_payload, indent=2),
             encoding="utf-8",
         )
 
@@ -487,6 +611,7 @@ class LocalSkillRepository:
             packaging_allowed=packaging_allowed,
             source_commit=source_commit,
             source_fingerprint=source_fingerprint,
+            extensions=_coerce_extensions(metadata_payload.get("extensions")),
         )
 
     def update_metadata(
@@ -513,6 +638,7 @@ class LocalSkillRepository:
         packaging_allowed: Optional[bool] = None,
         source_commit: Optional[str] = None,
         source_fingerprint: Optional[str] = None,
+        extensions: Optional[Dict[str, object]] = None,
     ) -> Optional[SkillRecord]:
         """Update the local sidecar metadata for one installed skill."""
         skill_dir = self.root / name
@@ -562,8 +688,78 @@ class LocalSkillRepository:
             existing["source_commit"] = source_commit
         if source_fingerprint is not None:
             existing["source_fingerprint"] = source_fingerprint
+        if extensions is not None:
+            existing["extensions"] = copy.deepcopy(extensions)
 
-        metadata_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
+        metadata_path.write_text(
+            json.dumps(
+                _build_install_metadata_payload(
+                    trust_level=TrustLevel(
+                        str(existing.get("trust_level", TrustLevel.UNTRUSTED.value))
+                    ),
+                    source_type=SkillSourceType(
+                        str(existing.get("source_type", SkillSourceType.LOCAL.value))
+                    ),
+                    repo=_coerce_optional(existing.get("repo")),
+                    upstream=_coerce_optional(existing.get("upstream")),
+                    install_state=SkillInstallState(
+                        str(
+                            existing.get(
+                                "install_state", SkillInstallState.DRAFT.value
+                            )
+                        )
+                    ),
+                    lifecycle_stage=SkillLifecycleStage(
+                        str(
+                            existing.get(
+                                "lifecycle_stage", SkillLifecycleStage.DRAFT.value
+                            )
+                        )
+                    ),
+                    capability_family=_coerce_optional(
+                        existing.get("capability_family")
+                    )
+                    or name,
+                    is_primary=bool(existing.get("is_primary", False)),
+                    variant_of=_coerce_optional(existing.get("variant_of")),
+                    variant_reason=_coerce_optional(existing.get("variant_reason")),
+                    supersedes=_coerce_keywords(existing.get("supersedes")),
+                    submission_type=_coerce_optional(existing.get("submission_type")),
+                    nearest_canonical=_coerce_optional(
+                        existing.get("nearest_canonical")
+                    ),
+                    evidence_summary=_coerce_optional(
+                        existing.get("evidence_summary")
+                    ),
+                    family_confidence=_coerce_float(
+                        existing.get("family_confidence")
+                    ),
+                    disposition_confidence=_coerce_float(
+                        existing.get("disposition_confidence")
+                    ),
+                    disposition_reason_codes=_coerce_keywords(
+                        existing.get("disposition_reason_codes")
+                    ),
+                    registry_snapshot_version=_coerce_optional(
+                        existing.get("registry_snapshot_version")
+                    ),
+                    license_status=_coerce_optional(existing.get("license_status")),
+                    license_expression=_coerce_optional(
+                        existing.get("license_expression")
+                    ),
+                    packaging_allowed=_coerce_optional_bool(
+                        existing.get("packaging_allowed")
+                    ),
+                    source_commit=_coerce_optional(existing.get("source_commit")),
+                    source_fingerprint=_coerce_optional(
+                        existing.get("source_fingerprint")
+                    ),
+                    extensions=_coerce_extensions(existing.get("extensions")),
+                ),
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
         return self.get(name)
 
     def _read_install_metadata(self, skill_dir: Path) -> Dict[str, object]:
@@ -572,9 +768,12 @@ class LocalSkillRepository:
         if not metadata_path.exists():
             return {}
         try:
-            return json.loads(metadata_path.read_text(encoding="utf-8"))
+            payload = json.loads(metadata_path.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
             return {}
+        if not isinstance(payload, dict):
+            return {}
+        return _normalize_install_metadata(payload)
 
 
 class CanonicalSkillRepository:

@@ -11,6 +11,7 @@ from synthesis import (
     SkillInstallPolicy,
     SkillInstallState,
     SkillLifecycleStage,
+    SkillSourceType,
     SubmissionAutomationResult,
     SynthesisClient,
     SynthesisMCPServer,
@@ -2020,6 +2021,128 @@ def test_local_skill_without_metadata_defaults_to_untrusted_draft(tmp_path: Path
     assert installed[0].trust_level == TrustLevel.UNTRUSTED
     assert installed[0].install_state == SkillInstallState.DRAFT
     assert installed[0].lifecycle_stage == SkillLifecycleStage.DRAFT
+
+
+@pytest.mark.asyncio
+async def test_installed_skill_metadata_writes_nexus_extension_contract(
+    skill_roots: tuple[Path, Path],
+) -> None:
+    canonical_root, install_root = skill_roots
+    _write_skill(
+        canonical_root,
+        name="csv-parser",
+        description="Parse CSV files into Python dictionaries.",
+        keywords=["csv", "parse", "files"],
+    )
+    _write_catalog(
+        canonical_root,
+        [
+            {
+                "name": "csv-parser",
+                "description": "Parse CSV files into Python dictionaries.",
+                "keywords": ["csv", "parse", "files"],
+                "relative_path": "skills/csv-parser",
+                "trust_level": "trusted",
+                "source_type": "canonical",
+                "repo": DEFAULT_CANONICAL_REPO_SLUG,
+                "governance": {
+                    "capability_family": "csv-parser",
+                    "lifecycle_stage": "canonical",
+                    "trust_level": "trusted",
+                    "is_primary": True,
+                },
+            }
+        ],
+    )
+
+    client = SynthesisClient(
+        provider_type="mock",
+        canonical_repo_path=str(canonical_root),
+        host_root=str(install_root),
+    )
+
+    result = await client.acquire_skill("parse csv files")
+
+    assert result.success is True
+    assert result.primary_skill is not None
+    assert result.primary_skill.extensions["nexus"]["trust_level"] == "trusted"
+    assert result.primary_skill.extensions["nexus"]["source_type"] == "canonical"
+    metadata_path = install_root / "csv-parser" / ".synthesis.json"
+    payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+
+    assert payload["trust_level"] == "trusted"
+    assert payload["source_type"] == "canonical"
+    assert payload["lifecycle_stage"] == "canonical"
+    assert payload["capability_family"] == "csv-parser"
+    assert payload["extensions"]["nexus"]["trust_level"] == "trusted"
+    assert payload["extensions"]["nexus"]["source_type"] == "canonical"
+    assert payload["extensions"]["nexus"]["lifecycle_stage"] == "canonical"
+    assert payload["extensions"]["nexus"]["capability_family"] == "csv-parser"
+
+
+def test_local_skill_metadata_prefers_nexus_extension_over_flat_fields(
+    tmp_path: Path,
+) -> None:
+    install_root = tmp_path / "installed"
+    install_root.mkdir()
+    _write_local_skill(
+        install_root,
+        name="repo-map",
+        description="Use when mapping repository structure before implementation.",
+    )
+    (install_root / "repo-map" / ".synthesis.json").write_text(
+        json.dumps(
+            {
+                "trust_level": "untrusted",
+                "source_type": "local",
+                "install_state": "draft",
+                "lifecycle_stage": "draft",
+                "capability_family": "legacy-family",
+                "extensions": {
+                    "nexus": {
+                        "trust_level": "probation",
+                        "source_type": "canonical",
+                        "install_state": "installed",
+                        "lifecycle_stage": "challenger",
+                        "capability_family": "repo-surveyor",
+                        "preferred_planning_roles": [
+                            "planning.coding",
+                            "planning.initial.coding",
+                        ],
+                        "external_tools": [
+                            "cartographer.map_repo",
+                            "mnemos.retrieve",
+                        ],
+                    }
+                },
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    client = SynthesisClient(
+        provider_type="mock",
+        canonical_repo_path=str(tmp_path / "canonical"),
+        host_root=str(install_root),
+    )
+
+    installed = client.inspect_skill("repo-map")
+
+    assert installed is not None
+    assert installed.trust_level == TrustLevel.PROBATION
+    assert installed.source.type == SkillSourceType.CANONICAL
+    assert installed.install_state == SkillInstallState.INSTALLED
+    assert installed.lifecycle_stage == SkillLifecycleStage.CHALLENGER
+    assert installed.capability_family == "repo-surveyor"
+    assert installed.extensions["nexus"]["preferred_planning_roles"] == [
+        "planning.coding",
+        "planning.initial.coding",
+    ]
+    assert installed.extensions["nexus"]["external_tools"] == [
+        "cartographer.map_repo",
+        "mnemos.retrieve",
+    ]
 
 
 @pytest.mark.asyncio

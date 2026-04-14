@@ -123,6 +123,7 @@ class SkillRecord(BaseModel):
     license_status: Optional[str] = None
     license_expression: Optional[str] = None
     packaging_allowed: Optional[bool] = None
+    extensions: Dict[str, Any] = Field(default_factory=dict)
     relative_path: Optional[str] = None
     install_path: Optional[str] = None
     score: float = 0.0
